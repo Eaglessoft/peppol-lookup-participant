@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peppol-lookup
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: peppol-lookup
+  template:
+    metadata:
+      labels:
+        app: peppol-lookup
+    spec:
+      containers:
+        - name: peppol-lookup
+          image: peppol-lookup:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_CONTEXT_PATH
+              value: "/"
+            - name: LOG_FORMAT
+              value: "json"
+            - name: LOG_LEVEL
+              value: "INFO"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: peppol-lookup
+spec:
+  selector:
+    app: peppol-lookup
+  ports:
+    - port: 80
+      targetPort: 8080
+
