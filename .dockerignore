@@ -7,7 +7,11 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .mypy_cache
-data
+pytest-cache-files-*
+*.log
+data/*
+!data/codelists/
+!data/codelists/*.json
 dist
 build
 *.pyc

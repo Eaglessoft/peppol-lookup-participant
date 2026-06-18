@@ -2,23 +2,31 @@
 
 ## Local Run
 
-```bash
+```powershell
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
+The default configuration uses public Peppol Directory, SML, SMK, SMP, and
+Lookup Service sources. The codelist cache is committed under `data/codelists`,
+so a normal local run does not require setting Peppol-specific environment
+variables.
+
+Set `PEPPOL_CODELIST_REQUIRED=false` only when intentionally running without a
+valid local codelist cache.
+
 ## Test
 
 ```bash
-pytest
+python -m pytest
 ```
 
 ## Lint
 
 ```bash
-ruff check .
+python -m ruff check .
 ```
 
 ## VS Code

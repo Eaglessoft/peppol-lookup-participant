@@ -1,0 +1,57 @@
+{
+  "_cache": {
+    "fetchedAt": "2026-06-07T19:42:17.515877+00:00",
+    "sourceUrl": "https://docs.peppol.eu/edelivery/codelists/v9.6/Peppol%20Code%20Lists%20-%20Transport%20profiles%20v9.6.json"
+  },
+  "entry-count": 5,
+  "values": [
+    {
+      "comment": "TICC-248",
+      "deprecation-release": "1.0.0",
+      "initial-release": "1.0.0",
+      "profile-id": "busdox-transport-start",
+      "profile-version": "1.0.1",
+      "protocol": "START",
+      "removal-date": "2023-09-06",
+      "state": "removed"
+    },
+    {
+      "comment": "TICC-249",
+      "deprecation-release": "7",
+      "initial-release": "1.0.0",
+      "profile-id": "busdox-transport-as2-ver1p0",
+      "profile-version": "1.0",
+      "protocol": "AS2",
+      "removal-date": "2023-09-06",
+      "state": "removed"
+    },
+    {
+      "comment": "TICC-248",
+      "deprecation-release": "3",
+      "initial-release": "2",
+      "profile-id": "peppol-transport-as4-v1_0",
+      "profile-version": "1.0",
+      "protocol": "AS4",
+      "removal-date": "2023-09-06",
+      "state": "removed"
+    },
+    {
+      "initial-release": "3",
+      "profile-id": "peppol-transport-as4-v2_0",
+      "profile-version": "2.0",
+      "protocol": "AS4",
+      "state": "active"
+    },
+    {
+      "comment": "TICC-249",
+      "deprecation-release": "8.4",
+      "initial-release": "5",
+      "profile-id": "busdox-transport-as2-ver2p0",
+      "profile-version": "2.0",
+      "protocol": "AS2",
+      "removal-date": "2023-09-06",
+      "state": "removed"
+    }
+  ],
+  "version": "9.6"
+}

@@ -9,8 +9,12 @@ __pycache__/
 htmlcov/
 dist/
 build/
+*.log
+pytest-cache-files-*/
 data/*
 !data/.gitkeep
+!data/codelists/
+!data/codelists/*.json
 .env
 .env.*
 !.env.example

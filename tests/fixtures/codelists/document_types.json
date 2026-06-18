@@ -1,0 +1,15 @@
+{
+  "version": "9.6",
+  "entry-count": 1,
+  "values": [
+    {
+      "value": "doc-1",
+      "name": "Fixture Document Type",
+      "state": "deprecated"
+    }
+  ],
+  "_cache": {
+    "fetchedAt": "2026-05-20T00:00:00+00:00",
+    "sourceUrl": "https://docs.peppol.eu/edelivery/codelists/example.json"
+  }
+}

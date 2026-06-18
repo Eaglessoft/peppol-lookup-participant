@@ -88,11 +88,16 @@ Rows with a `deprecated` state must be tagged as deprecated but still understood
 | --- | --- | --- | --- |
 | Peppol Directory | `https://directory.peppol.eu` | `prod` | REST search and exports. |
 | Peppol Directory TEST | `https://test-directory.peppol.eu` | `test` | REST search and exports. |
-| Peppol Lookup Service | `https://lookup.peppol.org` | `prod` | Publication status lookup. API details must be confirmed during implementation. |
+| Peppol Lookup Service API | `https://api-lookup.peppol.org/lookup` | `prod` | Publication status lookup. Called with `POST` JSON body `{ "identifier": "iso6523-actorid-upis::0208:0123456749" }`. |
 | SML DNS zone | `edelivery.tech.ec.europa.eu` | `prod` | Participant-to-SMP discovery. |
-| SMK DNS zone | `sml.test.tech.peppol.org` | `test` | Test participant-to-SMP discovery. |
+| SMK DNS zone | `acc.edelivery.tech.ec.europa.eu` | `test` | Test participant-to-SMP discovery used by the public Peppol TEST Directory. |
 
 The endpoint registry must be configuration-driven. Defaults are committed, but operators can disable or override any source via environment variables.
+
+SMP URLs are resolved dynamically from SML/SMK DNS records and are not configured
+per SMP. Only the central SML/SMK DNS zone is configured. If a test participant
+is published to a different acceptance/test SMK, operators should override
+`PEPPOL_SML_TEST_DNS_ZONE`.
 
 ## Public API
 
@@ -539,7 +544,7 @@ Detail mode must preserve every useful discovery result and make conflicts visib
       },
       "lookupService": {
         "source": "openpeppol-lookup",
-        "baseUrl": "https://lookup.peppol.org",
+        "baseUrl": "https://api-lookup.peppol.org",
         "status": "unknown",
         "payload": null
       }
@@ -579,7 +584,9 @@ Directory and SML/SMP results must be treated separately. Directory absence does
 
 ## Caching and Rate Limits
 
-- Directory REST API has strict rate limits, so adapter-level throttling is required.
+- Directory REST API can have strict rate limits, so local caller rate limits and
+  source-result caching are applied. Stricter per-adapter throttling can be added
+  if production traffic requires it.
 - Cache positive and negative source results separately.
 - Suggested defaults:
   - Directory search: 15 minutes.
@@ -619,9 +626,9 @@ Environment variables:
 | `PEPPOL_LOOKUP_ENVIRONMENTS` | `prod,test` | Enabled environments. |
 | `PEPPOL_DIRECTORY_PROD_URL` | `https://directory.peppol.eu` | Production Directory base URL. |
 | `PEPPOL_DIRECTORY_TEST_URL` | `https://test-directory.peppol.eu` | Test Directory base URL. |
-| `PEPPOL_LOOKUP_SERVICE_URL` | `https://lookup.peppol.org` | OpenPeppol Lookup Service base URL. |
+| `PEPPOL_LOOKUP_SERVICE_URL` | `https://api-lookup.peppol.org` | OpenPeppol Lookup Service API base URL. |
 | `PEPPOL_SML_PROD_DNS_ZONE` | `edelivery.tech.ec.europa.eu` | Production SML DNS zone. |
-| `PEPPOL_SML_TEST_DNS_ZONE` | `sml.test.tech.peppol.org` | Test SMK DNS zone. |
+| `PEPPOL_SML_TEST_DNS_ZONE` | `acc.edelivery.tech.ec.europa.eu` | Test SMK DNS zone. |
 | `PEPPOL_SOURCE_TIMEOUT_MS` | `8000` | Per-source timeout. |
 | `PEPPOL_CACHE_TTL_SECONDS` | `900` | Default cache TTL. |
 | `PEPPOL_INCLUDE_RAW_MAX_BYTES` | `65536` | Max raw payload bytes in detail mode. |
@@ -629,6 +636,14 @@ Environment variables:
 | `PEPPOL_CODELIST_CACHE_DIR` | `data/codelists` | Local codelist cache directory. |
 | `PEPPOL_CODELIST_REFRESH_SECONDS` | `86400` | Scheduled codelist refresh interval. |
 | `PEPPOL_CODELIST_REQUIRED` | `true` | Whether startup requires at least one valid cached codelist snapshot. |
+| `PEPPOL_CODELIST_AUTO_REFRESH` | `false` | Whether to run the scheduled codelist refresh loop. |
+| `PEPPOL_ADMIN_TOKEN` | empty | Optional token required for codelist refresh and cache-bypassing lookup refresh. |
+| `PEPPOL_RATE_LIMIT_REQUESTS` | `60` | Local per-caller lookup request limit. |
+| `PEPPOL_RATE_LIMIT_WINDOW_SECONDS` | `60` | Local rate-limit window in seconds. |
+| `PEPPOL_DIRECTORY_ENABLED` | `true` | Enable OpenPeppol Directory adapters. |
+| `PEPPOL_SML_ENABLED` | `true` | Enable SML/SMK DNS discovery adapters. |
+| `PEPPOL_SMP_ENABLED` | `true` | Enable resolved SMP adapters. |
+| `PEPPOL_LOOKUP_SERVICE_ENABLED` | `true` | Enable OpenPeppol Lookup Service adapter. |
 
 ## Implementation Modules
 

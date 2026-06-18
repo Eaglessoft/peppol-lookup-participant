@@ -5,11 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "peppol-lookup"
 version = "0.1.0"
-description = "Python API scaffold for PEPPOL lookup workflows"
+description = "Python API service for PEPPOL participant lookup workflows"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.111.0",
+  "httpx>=0.27.0",
   "pydantic-settings>=2.3.0",
   "python-multipart>=0.0.9",
   "structlog>=24.1.0",

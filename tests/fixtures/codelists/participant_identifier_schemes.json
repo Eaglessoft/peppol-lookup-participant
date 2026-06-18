@@ -1,0 +1,17 @@
+{
+  "version": "9.6",
+  "entry-count": 1,
+  "values": [
+    {
+      "iso6523": "0208",
+      "country": "BE",
+      "scheme-name": "Belgian enterprise number",
+      "state": "active",
+      "validation-rules": "RegEx: [0-9]{10}"
+    }
+  ],
+  "_cache": {
+    "fetchedAt": "2026-05-20T00:00:00+00:00",
+    "sourceUrl": "https://docs.peppol.eu/edelivery/codelists/example.json"
+  }
+}

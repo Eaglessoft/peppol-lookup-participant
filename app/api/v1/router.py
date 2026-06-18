@@ -1,8 +1,10 @@
 from fastapi import APIRouter
 
+from app.api.v1.lookup_routes import router as lookup_router
 from app.shared.responses import MessageResponse
 
 router = APIRouter()
+router.include_router(lookup_router)
 
 
 @router.get("", response_model=MessageResponse)

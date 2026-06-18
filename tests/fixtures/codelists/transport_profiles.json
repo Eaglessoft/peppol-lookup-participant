@@ -1,0 +1,14 @@
+{
+  "version": "9.6",
+  "entry-count": 1,
+  "values": [
+    {
+      "profile-id": "peppol-transport-as4-v2_0",
+      "state": "active"
+    }
+  ],
+  "_cache": {
+    "fetchedAt": "2026-05-20T00:00:00+00:00",
+    "sourceUrl": "https://docs.peppol.eu/edelivery/codelists/example.json"
+  }
+}
