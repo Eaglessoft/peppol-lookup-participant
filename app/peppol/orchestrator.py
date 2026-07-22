@@ -75,6 +75,7 @@ class LookupOrchestrator:
         timeout_ms: int,
         refresh: bool,
     ) -> tuple[EnvironmentResult, list[SourceResult]]:
+        sources = _with_required_source_dependencies(sources)
         source_results: list[SourceResult] = []
         directory = None
         sml = None
@@ -452,6 +453,13 @@ def _warnings(source_results: list[SourceResult]) -> list[str]:
 
 def _disabled_source_result(source: str) -> SourceResult:
     return SourceResult(source=source, status=SourceStatus.disabled, durationMs=0)
+
+
+def _with_required_source_dependencies(sources: set[str]) -> set[str]:
+    effective_sources = set(sources)
+    if "smp" in effective_sources:
+        effective_sources.update({"sml", "smk"})
+    return effective_sources
 
 
 def _dns_health_url(zone: str) -> str:

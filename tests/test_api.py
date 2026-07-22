@@ -1,5 +1,8 @@
 import asyncio
+import os
+import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -7,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.api.v1.lookup_routes import get_orchestrator
 from app.main import create_app
+from app.peppol.codelists.cache import CodeListCache
 from app.peppol.codelists.document_types import load_document_types
 from app.peppol.codelists.evaluator import CodeListEvaluator
 from app.peppol.codelists.participant_schemes import validate_candidate
@@ -23,6 +27,7 @@ from app.peppol.models import (
     ParticipantIdentifier,
 )
 from app.peppol.normalizer import normalize_participant_id
+from app.peppol.orchestrator import _with_required_source_dependencies
 from app.peppol.parsers.business_card import business_entities_from_directory
 from app.peppol.parsers.service_group import parse_service_group
 from app.peppol.parsers.service_metadata import parse_service_metadata
@@ -558,3 +563,40 @@ async def async_lookup(value: str) -> dict[str, object]:
         ParticipantIdentifier(value=value)
     )
 
+
+
+def test_smp_source_adds_sml_smk_dependency() -> None:
+    assert _with_required_source_dependencies({"smp"}) == {"smp", "sml", "smk"}
+    assert _with_required_source_dependencies({"directory"}) == {"directory"}
+
+
+def test_codelist_cache_write_is_atomic(monkeypatch) -> None:
+    original_replace = os.replace
+    replace_calls = []
+    cache_dir = Path(".test-codelist-cache") / uuid4().hex
+
+    def tracking_replace(source, destination):
+        source_path = Path(source)
+        destination_path = Path(destination)
+        replace_calls.append((source_path, destination_path, source_path.exists()))
+        original_replace(source, destination)
+
+    monkeypatch.setattr("app.peppol.codelists.cache.os.replace", tracking_replace)
+
+    try:
+        cache = CodeListCache(str(cache_dir))
+        written = cache.write("document_types", {"values": []}, "https://example.test/codelist.json")
+        read_back = cache.read("document_types")
+
+        assert replace_calls
+        temporary_path, destination_path, source_existed = replace_calls[0]
+        assert source_existed is True
+        assert temporary_path.name.startswith(".document_types.json.")
+        assert temporary_path.suffix == ".tmp"
+        assert not temporary_path.exists()
+        assert destination_path == cache_dir / "document_types.json"
+        assert written.path == destination_path
+        assert read_back is not None
+        assert read_back.payload["values"] == []
+    finally:
+        shutil.rmtree(cache_dir.parent, ignore_errors=True)
