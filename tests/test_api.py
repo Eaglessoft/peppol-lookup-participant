@@ -24,10 +24,13 @@ from app.peppol.models import (
     CodeListStatus,
     DirectoryResult,
     LightLookupResponse,
+    LookupMode,
     ParticipantIdentifier,
+    SmlResult,
+    SmpResult,
 )
 from app.peppol.normalizer import normalize_participant_id
-from app.peppol.orchestrator import _with_required_source_dependencies
+from app.peppol.orchestrator import LookupOrchestrator, _with_required_source_dependencies
 from app.peppol.parsers.business_card import business_entities_from_directory
 from app.peppol.parsers.service_group import parse_service_group
 from app.peppol.parsers.service_metadata import parse_service_metadata
@@ -52,7 +55,6 @@ def test_api_info_returns_service_metadata() -> None:
     assert body["service"] == "Peppol Lookup API"
     assert body["status"] == "running"
 
-
 def test_health_returns_ok() -> None:
     app = create_app(Settings())
     client = TestClient(app)
@@ -62,6 +64,15 @@ def test_health_returns_ok() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+def test_redoc_is_disabled_and_swagger_remains_available() -> None:
+    app = create_app(Settings())
+    client = TestClient(app)
+
+    docs_response = client.get("/docs")
+    redoc_response = client.get("/redoc")
+
+    assert docs_response.status_code == 200
+    assert redoc_response.status_code == 404
 
 def test_participant_lookup_route_uses_orchestrator_contract() -> None:
     class FakeOrchestrator:
@@ -77,7 +88,7 @@ def test_participant_lookup_route_uses_orchestrator_contract() -> None:
     client = TestClient(app)
 
     response = client.get(
-        "/api/v1/participants/iso6523-actorid-upis%3A%3A0192%3A987654321/lookup"
+        "/api/v1/participants/iso6523-actorid-upis%3A%3A0192%3A987654321"
         "?environments=prod&sources=directory"
     )
 
@@ -87,7 +98,6 @@ def test_participant_lookup_route_uses_orchestrator_contract() -> None:
         "value": "0192:987654321",
     }
 
-
 def test_normalize_participant_id_accepts_default_scheme() -> None:
     participant = normalize_participant_id("0192:987654321")
 
@@ -95,7 +105,6 @@ def test_normalize_participant_id_accepts_default_scheme() -> None:
     assert participant.value == "0192:987654321"
     assert participant.icd == "0192"
     assert participant.local_identifier == "987654321"
-
 
 def test_service_group_and_metadata_parser_extract_capabilities() -> None:
     service_group, refs = parse_service_group(
@@ -165,7 +174,6 @@ def test_service_group_and_metadata_parser_extract_capabilities() -> None:
     assert service.processes[0].endpoints[0].endpointReference == "https://ap.example/as4"
     assert service.processes[0].endpoints[0].certificate["fingerprints"]["sha256"] is None
 
-
 def test_service_group_parser_ignores_null_document_references() -> None:
     service_group, refs = parse_service_group(
         """
@@ -183,7 +191,6 @@ def test_service_group_parser_ignores_null_document_references() -> None:
     assert refs == ["busdox-docid-qns::doc-1"]
     assert service_group["documentReferences"] == ["busdox-docid-qns::doc-1"]
 
-
 def test_directory_search_match_must_equal_candidate_participant() -> None:
     payload = {
         "matches": [
@@ -197,7 +204,6 @@ def test_directory_search_match_must_equal_candidate_participant() -> None:
     assert _payload_has_exact_participant(
         payload, ParticipantIdentifier(value="9913:000076-vidapilot.be0123456749")
     )
-
 
 def test_directory_search_payload_is_filtered_to_exact_participant() -> None:
     payload = {
@@ -221,7 +227,6 @@ def test_directory_search_payload_is_filtered_to_exact_participant() -> None:
     assert filtered["total-result-count"] == 1
     assert filtered["matches"][0]["entities"][0]["name"] == "Sajini"
 
-
 def test_directory_participant_values_are_extracted_for_lookup() -> None:
     payload = {
         "matches": [
@@ -244,7 +249,6 @@ def test_directory_participant_values_are_extracted_for_lookup() -> None:
         "9925:be0123456749",
         "0208:0123456744",
     ]
-
 
 def test_business_card_websites_stay_on_business_entity() -> None:
     directory = DirectoryResult(
@@ -287,7 +291,6 @@ def test_business_card_websites_stay_on_business_entity() -> None:
     assert entities[0].contacts == [{"type": "Technical", "email": "peppol@eaglessoft.com"}]
     assert entities[0].additionalInfo == "Australia Austria Belgium"
 
-
 def test_business_card_entities_are_extracted_from_directory_search_matches() -> None:
     directory = DirectoryResult(
         baseUrl="https://directory.example",
@@ -320,7 +323,6 @@ def test_business_card_entities_are_extracted_from_directory_search_matches() ->
     assert entities[0].additionalInfo == "Via The Yuki Company"
     assert entities[0].regDate == "2025-11-24"
 
-
 def test_directory_matches_are_filtered_when_explicit_icd_is_used() -> None:
     directory_matches = [
         DirectoryResult(
@@ -343,7 +345,6 @@ def test_directory_matches_are_filtered_when_explicit_icd_is_used() -> None:
     assert filtered[0].businessCard["total-result-count"] == 1
     assert filtered[0].businessCard["matches"][0]["participantID"].endswith("0208:0123456749")
 
-
 def test_codelist_evaluator_loads_cached_official_json() -> None:
     cache_dir = Path(__file__).parent / "fixtures" / "codelists"
     evaluator = CodeListEvaluator(str(cache_dir))
@@ -362,7 +363,6 @@ def test_codelist_evaluator_loads_cached_official_json() -> None:
         "0208:0123456749"
     )
 
-
 def test_participant_countries_endpoint_uses_codelist() -> None:
     app = create_app(Settings())
     client = TestClient(app)
@@ -375,49 +375,19 @@ def test_participant_countries_endpoint_uses_codelist() -> None:
     assert "DE" in countries
     assert countries == sorted(countries)
 
-
-def test_codelist_refresh_requires_admin_token_when_configured() -> None:
-    app = create_app(Settings(peppol_admin_token="secret"))
-    client = TestClient(app)
-
-    response = client.post("/api/v1/sources/codelists/refresh")
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "admin token required"
-
-
-def test_lookup_refresh_requires_admin_token_when_configured() -> None:
+def test_codelist_refresh_is_public() -> None:
     class FakeOrchestrator:
-        async def lookup(self, **kwargs):
-            return LightLookupResponse(participantIdentifier=kwargs["participant"])
+        async def refresh_codelists(self):
+            return {"status": "refreshed"}
 
-    app = create_app(Settings(peppol_admin_token="secret"))
+    app = create_app(Settings())
     app.dependency_overrides[get_orchestrator] = lambda: FakeOrchestrator()
     client = TestClient(app)
 
-    response = client.get("/api/v1/participants/0192:987654321/lookup?refresh=true")
+    response = client.post("/api/v1/codelists/refresh")
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "admin token required for refresh"
-
-
-def test_company_post_refresh_requires_admin_token_when_configured() -> None:
-    app = create_app(Settings(peppol_admin_token="secret"))
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/v1/companies/lookup",
-        json={
-            "country": "BE",
-            "identifier": "0123456749",
-            "mode": "detail",
-            "refresh": True,
-        },
-    )
-
-    assert response.status_code == 403
-    assert response.json()["detail"] == "admin token required for refresh"
-
+    assert response.status_code == 200
+    assert response.json() == {"status": "refreshed"}
 
 def test_codelist_required_fails_startup_without_valid_cache() -> None:
     with pytest.raises(RuntimeError, match="PEPPOL_CODELIST_REQUIRED"):
@@ -430,7 +400,6 @@ def test_codelist_required_fails_startup_without_valid_cache() -> None:
             )
         )
 
-
 def test_lookup_rate_limit_returns_429() -> None:
     class FakeOrchestrator:
         settings = Settings(peppol_rate_limit_requests=1, peppol_rate_limit_window_seconds=60)
@@ -442,12 +411,11 @@ def test_lookup_rate_limit_returns_429() -> None:
     app.dependency_overrides[get_orchestrator] = lambda: FakeOrchestrator()
     client = TestClient(app)
 
-    first = client.get("/api/v1/participants/0192:987654321/lookup?sources=directory")
-    second = client.get("/api/v1/participants/0192:987654321/lookup?sources=directory")
+    first = client.get("/api/v1/participants/0192:987654321?sources=directory")
+    second = client.get("/api/v1/participants/0192:987654321?sources=directory")
 
     assert first.status_code == 200
     assert second.status_code == 429
-
 
 def test_participant_scheme_check_digit_validation() -> None:
     evaluator = CodeListEvaluator("data/codelists")
@@ -465,7 +433,6 @@ def test_participant_scheme_check_digit_validation() -> None:
     assert rejected.valid is False
     assert rejected.reason == "check digit validation failed"
 
-
 def test_codelist_removed_dates_are_tagged_removed() -> None:
     payload = {
         "values": [
@@ -478,7 +445,6 @@ def test_codelist_removed_dates_are_tagged_removed() -> None:
     assert load_document_types(payload)["doc-removed"] == CodeListStatus.removed
     assert load_processes(payload)["proc-removed"] == CodeListStatus.removed
     assert load_transport_profiles(payload)["transport-removed"] == CodeListStatus.removed
-
 
 def test_company_lookup_detail_returns_rejected_candidates() -> None:
     class FakeOrchestrator:
@@ -493,7 +459,7 @@ def test_company_lookup_detail_returns_rejected_candidates() -> None:
     client = TestClient(app)
 
     response = client.get(
-        "/api/v1/companies/lookup?country=BE&identifier=0123456700"
+        "/api/v1/companies?country=BE&identifier=0123456700"
         "&identifier_type=0208&mode=detail"
     )
 
@@ -503,10 +469,9 @@ def test_company_lookup_detail_returns_rejected_candidates() -> None:
     assert body["candidates"][0]["rejectionReason"] == "check digit validation failed"
     assert body["matches"] == []
 
-
 def test_sml_dns_helpers_build_query_and_extract_smp_url() -> None:
     participant = ParticipantIdentifier(value="0192:987654321")
-    query_name = build_sml_query_name(participant, "edelivery.tech.ec.europa.eu")
+    query_name = build_sml_query_name(participant, "participant.sml.prod.tech.peppol.org")
     smp_url, records = extract_smp_base_url(
         [
             {
@@ -518,11 +483,10 @@ def test_sml_dns_helpers_build_query_and_extract_smp_url() -> None:
         ]
     )
 
-    assert query_name.endswith(".iso6523-actorid-upis.edelivery.tech.ec.europa.eu")
+    assert query_name.endswith(".iso6523-actorid-upis.participant.sml.prod.tech.peppol.org")
     assert not query_name.startswith("b-")
     assert smp_url == "https://smp.example.test"
     assert records
-
 
 def test_openpeppol_lookup_client_uses_post_api(monkeypatch) -> None:
     captured: dict[str, object] = {}
@@ -557,18 +521,73 @@ def test_openpeppol_lookup_client_uses_post_api(monkeypatch) -> None:
     }
     assert result["payload"]["exists"] is True
 
-
 async def async_lookup(value: str) -> dict[str, object]:
     return await OpenPeppolLookupClient("https://api-lookup.peppol.org", 1000).lookup(
         ParticipantIdentifier(value=value)
     )
 
+def test_smp_url_is_resolved_from_prod_sml_and_test_smk(monkeypatch) -> None:
+    resolved_zones = []
+    smp_base_urls = []
 
+    class FakeSmlDnsClient:
+        def __init__(self, dns_zone: str, timeout_ms: int, source: str) -> None:
+            self.dns_zone = dns_zone
+            self.source = source
+
+        async def resolve(self, participant: ParticipantIdentifier) -> SmlResult:
+            resolved_zones.append((self.source, self.dns_zone, participant.value))
+            return SmlResult(
+                source=self.source,
+                dnsZone=self.dns_zone,
+                queryName=f"hash.{self.dns_zone}",
+                smpBaseUrl=f"https://resolved-{self.source}.example",
+            )
+
+    class FakeSmpClient:
+        def __init__(self, base_url: str, timeout_ms: int, codelists: CodeListEvaluator) -> None:
+            self.base_url = base_url
+            smp_base_urls.append(base_url)
+
+        async def lookup(
+            self, participant: ParticipantIdentifier, include_raw: bool, raw_max_bytes: int
+        ) -> SmpResult:
+            return SmpResult(baseUrl=self.base_url)
+
+    monkeypatch.setattr("app.peppol.orchestrator.SmlDnsClient", FakeSmlDnsClient)
+    monkeypatch.setattr("app.peppol.orchestrator.SmpClient", FakeSmpClient)
+
+    orchestrator = LookupOrchestrator(
+        Settings(
+            peppol_sml_prod_dns_zone="prod-zone.example",
+            peppol_sml_test_dns_zone="test-zone.example",
+        )
+    )
+
+    asyncio.run(
+        orchestrator.lookup(
+            participant=ParticipantIdentifier(value="0208:0123456749"),
+            mode=LookupMode.detail,
+            environments=["prod", "test"],
+            sources={"smp"},
+            include_raw=False,
+            timeout_ms=1000,
+            refresh=True,
+        )
+    )
+
+    assert resolved_zones == [
+        ("sml", "prod-zone.example", "0208:0123456749"),
+        ("smk", "test-zone.example", "0208:0123456749"),
+    ]
+    assert smp_base_urls == [
+        "https://resolved-sml.example",
+        "https://resolved-smk.example",
+    ]
 
 def test_smp_source_adds_sml_smk_dependency() -> None:
     assert _with_required_source_dependencies({"smp"}) == {"smp", "sml", "smk"}
     assert _with_required_source_dependencies({"directory"}) == {"directory"}
-
 
 def test_codelist_cache_write_is_atomic(monkeypatch) -> None:
     original_replace = os.replace

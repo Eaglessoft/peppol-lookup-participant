@@ -445,7 +445,6 @@
         }
         return readableValue(item.countryCode) || readableValue(item.country);
     }
-
     function environmentTitle(name) {
         if (name === 'prod') return 'Production';
         if (name === 'test') return 'Test';
@@ -567,7 +566,7 @@
             });
 
             try {
-                const response = await fetch(`${this.apiUrl}/api/v1/companies/lookup?${params}`);
+                const response = await fetch(`${this.apiUrl}/api/v1/companies?${params}`);
                 const payload = await response.json();
                 if (!response.ok) throw new Error(payload.detail || 'Lookup failed');
                 this.stopLookupProgress();

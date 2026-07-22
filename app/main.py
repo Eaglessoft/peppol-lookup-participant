@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=settings.app_version,
         root_path=settings.normalized_context_path,
         lifespan=lifespan,
+        redoc_url=None,
     )
 
     app.add_middleware(
@@ -43,7 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_origins=settings.allowed_origins,
         allow_credentials=settings.allow_credentials,
         allow_methods=["GET", "POST", "OPTIONS"],
-        allow_headers=["Content-Type", "Accept", "Origin", "X-Requested-With", "X-Admin-Token"],
+        allow_headers=["Content-Type", "Accept", "Origin", "X-Requested-With"],
     )
 
     app.state.settings = settings
@@ -57,4 +58,3 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
 
 app = create_app()
-

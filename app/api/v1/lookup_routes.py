@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from app.peppol.company_lookup import CompanyLookupService
 from app.peppol.models import (
@@ -21,7 +21,7 @@ from app.peppol.orchestrator import LookupOrchestrator
 from app.peppol.runtime import enforce_rate_limit, get_orchestrator_from_request
 from app.shared.config import Settings, get_settings
 
-router = APIRouter()
+router = APIRouter(tags=["Peppol lookup"])
 
 
 def get_orchestrator(request: Request) -> LookupOrchestrator:
@@ -32,35 +32,15 @@ def require_lookup_rate_limit(request: Request) -> None:
     enforce_rate_limit(request)
 
 
-def require_admin_token(
-    request: Request,
-    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
-) -> None:
-    settings: Settings = request.app.state.settings
-    if settings.peppol_admin_token and x_admin_token != settings.peppol_admin_token:
-        raise HTTPException(status_code=403, detail="admin token required")
-
-
-def require_refresh_permission(
-    request: Request,
-    refresh: bool,
-    x_admin_token: str | None,
-) -> None:
-    settings: Settings = request.app.state.settings
-    if refresh and settings.peppol_admin_token and x_admin_token != settings.peppol_admin_token:
-        raise HTTPException(status_code=403, detail="admin token required for refresh")
-
-
 @router.get(
-    "/participants/{participant_id:path}/lookup",
+    "/participants/{participant_id:path}",
     response_model=LightLookupResponse | DetailLookupResponse,
+    summary="Lookup participant by Peppol ID",
 )
 async def lookup_participant(
-    request: Request,
     participant_id: str,
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
     settings: Annotated[Settings, Depends(get_settings)],
-    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
     mode: LookupMode = LookupMode.light,
     environments: str | None = Query(default=None),
     sources: str | None = Query(default="all"),
@@ -69,7 +49,6 @@ async def lookup_participant(
     refresh: bool = False,
     _: Annotated[None, Depends(require_lookup_rate_limit)] = None,
 ) -> LightLookupResponse | DetailLookupResponse:
-    require_refresh_permission(request, refresh, x_admin_token)
     participant = normalize_participant_id(participant_id)
     return await orchestrator.lookup(
         participant=participant,
@@ -82,15 +61,16 @@ async def lookup_participant(
     )
 
 
-@router.post("/lookup", response_model=LightLookupResponse | DetailLookupResponse)
+@router.post(
+    "/participants/search",
+    response_model=LightLookupResponse | DetailLookupResponse,
+    summary="Search participant",
+)
 async def post_lookup(
-    request_context: Request,
     request: LookupRequest,
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
-    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
     _: Annotated[None, Depends(require_lookup_rate_limit)] = None,
 ) -> LightLookupResponse | DetailLookupResponse:
-    require_refresh_permission(request_context, request.refresh, x_admin_token)
     participant = normalize_participant_id(
         f"{request.participant_id.scheme}::{request.participant_id.value}"
     )
@@ -105,11 +85,13 @@ async def post_lookup(
     )
 
 
-@router.get("/companies/lookup", response_model=CompanyLookupResponse)
+@router.get(
+    "/companies",
+    response_model=CompanyLookupResponse,
+    summary="Discover company participants",
+)
 async def lookup_company(
-    request: Request,
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
-    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
     country: str = Query(min_length=2, max_length=2),
     identifier: str = Query(min_length=1),
     identifier_type: str | None = None,
@@ -119,7 +101,6 @@ async def lookup_company(
     refresh: bool = False,
     _: Annotated[None, Depends(require_lookup_rate_limit)] = None,
 ) -> CompanyLookupResponse:
-    require_refresh_permission(request, refresh, x_admin_token)
     service = CompanyLookupService(orchestrator, orchestrator.codelists)
     environment_values = normalize_environment_list(
         environments, orchestrator.settings.peppol_lookup_environments
@@ -130,15 +111,16 @@ async def lookup_company(
     )
 
 
-@router.post("/companies/lookup", response_model=CompanyLookupResponse)
+@router.post(
+    "/companies/search",
+    response_model=CompanyLookupResponse,
+    summary="Search companies",
+)
 async def post_lookup_company(
-    request_context: Request,
     request: CompanyLookupRequest,
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
-    x_admin_token: Annotated[str | None, Header(alias="X-Admin-Token")] = None,
     _: Annotated[None, Depends(require_lookup_rate_limit)] = None,
 ) -> CompanyLookupResponse:
-    require_refresh_permission(request_context, request.refresh, x_admin_token)
     service = CompanyLookupService(orchestrator, orchestrator.codelists)
     return await service.lookup(
         request.country,
@@ -151,21 +133,24 @@ async def post_lookup_company(
     )
 
 
-@router.get("/sources")
+@router.get("/sources", summary="List lookup sources")
 def sources(
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
 ) -> dict[str, object]:
     return orchestrator.sources()
 
 
-@router.get("/codelists/participant-countries")
+@router.get(
+    "/codelists/participant-countries",
+    summary="List supported participant countries",
+)
 def participant_countries(
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
 ) -> dict[str, object]:
     return {"countries": orchestrator.codelists.participant_countries()}
 
 
-@router.get("/sources/health")
+@router.get("/sources/health", summary="Check lookup source health")
 async def source_health(
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
     request: Request,
@@ -182,9 +167,8 @@ async def source_health(
     }
 
 
-@router.post("/sources/codelists/refresh")
+@router.post("/codelists/refresh", summary="Refresh Peppol codelists")
 async def refresh_codelists(
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
-    _: Annotated[None, Depends(require_admin_token)] = None,
 ) -> dict[str, object]:
     return await orchestrator.refresh_codelists()

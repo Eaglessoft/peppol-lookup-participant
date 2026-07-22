@@ -42,10 +42,9 @@ Use the same component as a full-page tool:
 
 ## Endpoints Used
 
-- `GET {api-base}/api/v1/companies/lookup?mode=detail`
+- `GET {api-base}/api/v1/companies?mode=detail`
 - `GET {api-base}/api/v1/codelists/participant-countries`
 
 The widget uses company discovery as the primary flow. Participant lookup is still available
 from the public API for direct Peppol participant IDs, but the embedded UI does not call it
 directly.
-

@@ -13,10 +13,11 @@ services:
       LOG_LEVEL: "INFO"
       ALLOWED_ORIGINS: "*"
       JSON_PRETTY_PRINT: "false"
-      PEPPOL_ADMIN_TOKEN: ""
       PEPPOL_CODELIST_AUTO_REFRESH: "false"
       PEPPOL_CODELIST_REQUIRED: "true"
       PEPPOL_CACHE_TTL_SECONDS: "900"
+      PEPPOL_SML_PROD_DNS_ZONE: "participant.sml.prod.tech.peppol.org"
+      PEPPOL_SML_TEST_DNS_ZONE: "participant.sml.test.tech.peppol.org"
       PEPPOL_RATE_LIMIT_REQUESTS: "120"
       PEPPOL_RATE_LIMIT_WINDOW_SECONDS: "60"
     restart: unless-stopped

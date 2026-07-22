@@ -89,8 +89,8 @@ Rows with a `deprecated` state must be tagged as deprecated but still understood
 | Peppol Directory | `https://directory.peppol.eu` | `prod` | REST search and exports. |
 | Peppol Directory TEST | `https://test-directory.peppol.eu` | `test` | REST search and exports. |
 | Peppol Lookup Service API | `https://api-lookup.peppol.org/lookup` | `prod` | Publication status lookup. Called with `POST` JSON body `{ "identifier": "iso6523-actorid-upis::0208:0123456749" }`. |
-| SML DNS zone | `edelivery.tech.ec.europa.eu` | `prod` | Participant-to-SMP discovery. |
-| SMK DNS zone | `acc.edelivery.tech.ec.europa.eu` | `test` | Test participant-to-SMP discovery used by the public Peppol TEST Directory. |
+| SML DNS zone | `participant.sml.prod.tech.peppol.org` | `prod` | Participant-to-SMP discovery. |
+| SMK DNS zone | `participant.sml.test.tech.peppol.org` | `test` | Test participant-to-SMP discovery used by the public Peppol TEST Directory. |
 
 The endpoint registry must be configuration-driven. Defaults are committed, but operators can disable or override any source via environment variables.
 
@@ -104,7 +104,7 @@ is published to a different acceptance/test SMK, operators should override
 ### Lookup
 
 ```http
-GET /api/v1/participants/{participant_id}/lookup
+GET /api/v1/participants/{participant_id}
 ```
 
 Query parameters:
@@ -123,7 +123,7 @@ Participant ID path value must support URL encoding because Peppol identifiers c
 Alternative POST endpoint for safer encoding:
 
 ```http
-POST /api/v1/lookup
+POST /api/v1/participants/search
 Content-Type: application/json
 
 {
@@ -148,7 +148,7 @@ Returns configured source adapters, enabled environments, base URLs, cache statu
 ### Company Discovery
 
 ```http
-GET /api/v1/companies/lookup
+GET /api/v1/companies
 ```
 
 Query parameters:
@@ -165,7 +165,7 @@ Query parameters:
 Alternative POST endpoint:
 
 ```http
-POST /api/v1/companies/lookup
+POST /api/v1/companies/search
 Content-Type: application/json
 
 {
@@ -430,7 +430,7 @@ Detail mode must preserve every useful discovery result and make conflicts visib
       "status": "found",
       "sml": {
         "source": "sml",
-        "dnsZone": "edelivery.tech.ec.europa.eu",
+        "dnsZone": "participant.sml.prod.tech.peppol.org",
         "queryName": "computed-query-name",
         "naptrRecords": [],
         "smpBaseUrl": "https://smp.example.com"
@@ -593,7 +593,7 @@ Directory and SML/SMP results must be treated separately. Directory absence does
   - SML/SMK DNS result: 15 minutes.
   - SMP ServiceGroup/ServiceMetadata: 15 minutes.
   - Source health: 1 minute.
-- `refresh=true` bypasses cache only for authenticated/admin usage or within safe rate limits.
+- `refresh=true` bypasses cache and remains subject to local rate limits.
 
 ## Error Model
 
@@ -627,8 +627,8 @@ Environment variables:
 | `PEPPOL_DIRECTORY_PROD_URL` | `https://directory.peppol.eu` | Production Directory base URL. |
 | `PEPPOL_DIRECTORY_TEST_URL` | `https://test-directory.peppol.eu` | Test Directory base URL. |
 | `PEPPOL_LOOKUP_SERVICE_URL` | `https://api-lookup.peppol.org` | OpenPeppol Lookup Service API base URL. |
-| `PEPPOL_SML_PROD_DNS_ZONE` | `edelivery.tech.ec.europa.eu` | Production SML DNS zone. |
-| `PEPPOL_SML_TEST_DNS_ZONE` | `acc.edelivery.tech.ec.europa.eu` | Test SMK DNS zone. |
+| `PEPPOL_SML_PROD_DNS_ZONE` | `participant.sml.prod.tech.peppol.org` | Production SML DNS zone. |
+| `PEPPOL_SML_TEST_DNS_ZONE` | `participant.sml.test.tech.peppol.org` | Test SMKv2 DNS zone. |
 | `PEPPOL_SOURCE_TIMEOUT_MS` | `8000` | Per-source timeout. |
 | `PEPPOL_CACHE_TTL_SECONDS` | `900` | Default cache TTL. |
 | `PEPPOL_INCLUDE_RAW_MAX_BYTES` | `65536` | Max raw payload bytes in detail mode. |
@@ -637,7 +637,6 @@ Environment variables:
 | `PEPPOL_CODELIST_REFRESH_SECONDS` | `86400` | Scheduled codelist refresh interval. |
 | `PEPPOL_CODELIST_REQUIRED` | `true` | Whether startup requires at least one valid cached codelist snapshot. |
 | `PEPPOL_CODELIST_AUTO_REFRESH` | `false` | Whether to run the scheduled codelist refresh loop. |
-| `PEPPOL_ADMIN_TOKEN` | empty | Optional token required for codelist refresh and cache-bypassing lookup refresh. |
 | `PEPPOL_RATE_LIMIT_REQUESTS` | `60` | Local per-caller lookup request limit. |
 | `PEPPOL_RATE_LIMIT_WINDOW_SECONDS` | `60` | Local rate-limit window in seconds. |
 | `PEPPOL_DIRECTORY_ENABLED` | `true` | Enable OpenPeppol Directory adapters. |

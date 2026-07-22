@@ -29,18 +29,16 @@ spec:
               value: "https://tools.example.com"
             - name: JSON_PRETTY_PRINT
               value: "false"
-            - name: PEPPOL_ADMIN_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: peppol-lookup-secrets
-                  key: admin-token
-                  optional: true
             - name: PEPPOL_CODELIST_AUTO_REFRESH
               value: "false"
             - name: PEPPOL_CODELIST_REQUIRED
               value: "true"
             - name: PEPPOL_CACHE_TTL_SECONDS
               value: "900"
+            - name: PEPPOL_SML_PROD_DNS_ZONE
+              value: "participant.sml.prod.tech.peppol.org"
+            - name: PEPPOL_SML_TEST_DNS_ZONE
+              value: "participant.sml.test.tech.peppol.org"
             - name: PEPPOL_RATE_LIMIT_REQUESTS
               value: "120"
             - name: PEPPOL_RATE_LIMIT_WINDOW_SECONDS

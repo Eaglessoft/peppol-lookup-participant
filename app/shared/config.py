@@ -33,10 +33,10 @@ class Settings(BaseSettings):
         default="https://api-lookup.peppol.org", validation_alias="PEPPOL_LOOKUP_SERVICE_URL"
     )
     peppol_sml_prod_dns_zone: str = Field(
-        default="edelivery.tech.ec.europa.eu", validation_alias="PEPPOL_SML_PROD_DNS_ZONE"
+        default="participant.sml.prod.tech.peppol.org", validation_alias="PEPPOL_SML_PROD_DNS_ZONE"
     )
     peppol_sml_test_dns_zone: str = Field(
-        default="acc.edelivery.tech.ec.europa.eu",
+        default="participant.sml.test.tech.peppol.org",
         validation_alias="PEPPOL_SML_TEST_DNS_ZONE",
     )
     peppol_source_timeout_ms: int = Field(default=8000, validation_alias="PEPPOL_SOURCE_TIMEOUT_MS")
@@ -60,7 +60,6 @@ class Settings(BaseSettings):
     peppol_codelist_auto_refresh: bool = Field(
         default=False, validation_alias="PEPPOL_CODELIST_AUTO_REFRESH"
     )
-    peppol_admin_token: str | None = Field(default=None, validation_alias="PEPPOL_ADMIN_TOKEN")
     peppol_rate_limit_requests: int = Field(
         default=60, validation_alias="PEPPOL_RATE_LIMIT_REQUESTS"
     )
