@@ -64,6 +64,26 @@ def test_health_returns_ok() -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
+
+def test_root_redirects_to_embed_ui() -> None:
+    app = create_app(Settings())
+    client = TestClient(app)
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/embed/sample.html"
+
+
+def test_root_redirect_honors_context_path() -> None:
+    app = create_app(Settings(app_context_path="/peppol-lookup"))
+    client = TestClient(app)
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/peppol-lookup/embed/sample.html"
+
 def test_redoc_is_disabled_and_swagger_remains_available() -> None:
     app = create_app(Settings())
     client = TestClient(app)

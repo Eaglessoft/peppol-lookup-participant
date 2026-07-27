@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
@@ -53,6 +54,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.codelist_refresh_task = None
 
     app.include_router(api_router)
+
+    @app.get("/", include_in_schema=False)
+    def root_ui() -> RedirectResponse:
+        return RedirectResponse(f"{settings.normalized_context_path}/embed/sample.html")
+
     app.mount("/embed", StaticFiles(directory="embed", html=True), name="embed")
     return app
 

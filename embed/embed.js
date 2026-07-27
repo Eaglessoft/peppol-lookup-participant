@@ -1,8 +1,39 @@
 (function () {
     'use strict';
 
-    const DEFAULT_API_URL = 'http://localhost:8080';
     const DEFAULT_CSS_URL = '/embed/embed.css';
+
+    function defaultApiUrl() {
+        const script = currentScript();
+        const scriptSource = script && script.getAttribute('src');
+        if (scriptSource) {
+            try {
+                const scriptUrl = new URL(scriptSource, window.location.href);
+                const basePath = scriptUrl.pathname.replace(/\/embed\/embed\.js$/, '');
+                return normalizeUrl(`${scriptUrl.origin}${basePath}`);
+            } catch (error) {
+                // Fall back to the current origin when the browser cannot parse the script URL.
+            }
+        }
+        return normalizeUrl(window.location.origin);
+    }
+
+    function defaultCssUrl() {
+        const script = currentScript();
+        const scriptSource = script && script.getAttribute('src');
+        if (scriptSource) {
+            try {
+                const scriptUrl = new URL(scriptSource, window.location.href);
+                scriptUrl.pathname = scriptUrl.pathname.replace(/\/embed\.js$/, '/embed.css');
+                scriptUrl.search = '';
+                return scriptUrl.toString();
+            } catch (error) {
+                // Fall back to the built-in embed path when the script URL is not parseable.
+            }
+        }
+        return DEFAULT_CSS_URL;
+    }
+
     const FALLBACK_COUNTRIES = [
         'AT', 'AU', 'BE', 'BG', 'CH', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI',
         'FR', 'GB', 'GR', 'HR', 'HU', 'IE', 'IS', 'IT', 'LI', 'LT', 'LU', 'LV',
@@ -23,7 +54,7 @@
         const script = currentScript();
         return normalizeUrl(element.getAttribute('api-url')) ||
             normalizeUrl(script && script.getAttribute('data-api-url')) ||
-            DEFAULT_API_URL;
+            defaultApiUrl();
     }
 
     function ensureCssLoaded(element) {
@@ -31,7 +62,7 @@
         if (document.querySelector('link[data-peppol-lookup-css="true"]')) return;
 
         const script = currentScript();
-        const cssUrl = script && script.getAttribute('data-css-url') || DEFAULT_CSS_URL;
+        const cssUrl = script && script.getAttribute('data-css-url') || defaultCssUrl();
         const link = document.createElement('link');
         link.rel = 'stylesheet';
         link.href = cssUrl;

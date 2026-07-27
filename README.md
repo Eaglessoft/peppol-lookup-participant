@@ -47,6 +47,7 @@ docker compose -f infra/docker-compose.yml up --build
 
 ## Access URLs
 
+- Peppol lookup UI: `http://localhost:8080/`
 - API info: `http://localhost:8080/api`
 - Health: `http://localhost:8080/health`
 - Sources: `http://localhost:8080/api/v1/sources`

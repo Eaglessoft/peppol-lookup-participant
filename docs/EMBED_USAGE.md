@@ -14,7 +14,7 @@ API URL is resolved in this order:
 
 1. `api-url` attribute on `<peppol-lookup>`
 2. `data-api-url` on the script tag
-3. Built-in default: `http://localhost:8080`
+3. Built-in default: same origin and base path as `embed.js`
 
 ## CSS Loading
 
