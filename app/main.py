@@ -1,9 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import router as api_router
@@ -11,10 +12,13 @@ from app.peppol.runtime import build_orchestrator, build_rate_limiter, codelist_
 from app.shared.config import Settings, get_settings
 from app.shared.logging import configure_logging
 
+ROOT_DIR = Path(__file__).resolve().parent.parent
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
+    context_path = settings.normalized_context_path
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -35,7 +39,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
-        root_path=settings.normalized_context_path,
+        docs_url=f"{context_path}/docs" if context_path else "/docs",
+        openapi_url=f"{context_path}/openapi.json" if context_path else "/openapi.json",
         lifespan=lifespan,
         redoc_url=None,
     )
@@ -53,13 +58,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.rate_limiter = build_rate_limiter(settings)
     app.state.codelist_refresh_task = None
 
-    app.include_router(api_router)
+    app.include_router(api_router, prefix=context_path)
 
-    @app.get("/", include_in_schema=False)
-    def root_ui() -> RedirectResponse:
-        return RedirectResponse(f"{settings.normalized_context_path}/embed/sample.html")
+    @app.get(f"{context_path}/" if context_path else "/", include_in_schema=False)
+    def root_ui() -> HTMLResponse:
+        html = (ROOT_DIR / "embed" / "sample.html").read_text(encoding="utf-8")
+        html = html.replace("./embed.css", "./embed/embed.css")
+        html = html.replace("./embed.js", "./embed/embed.js")
+        return HTMLResponse(html)
 
-    app.mount("/embed", StaticFiles(directory="embed", html=True), name="embed")
+    app.mount(
+        f"{context_path}/embed" if context_path else "/embed",
+        StaticFiles(directory=ROOT_DIR / "embed", html=True),
+        name="embed",
+    )
     return app
 
 

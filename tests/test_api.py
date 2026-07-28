@@ -65,24 +65,36 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_root_redirects_to_embed_ui() -> None:
+def test_root_serves_embed_ui() -> None:
     app = create_app(Settings())
     client = TestClient(app)
 
-    response = client.get("/", follow_redirects=False)
+    response = client.get("/")
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "/embed/sample.html"
+    assert response.status_code == 200
+    assert "<peppol-lookup" in response.text
+    assert "./embed/embed.js" in response.text
 
 
-def test_root_redirect_honors_context_path() -> None:
+def test_root_ui_keeps_relative_assets_with_context_path() -> None:
     app = create_app(Settings(app_context_path="/peppol-lookup"))
     client = TestClient(app)
 
-    response = client.get("/", follow_redirects=False)
+    root_response = client.get("/")
+    prefixed_response = client.get("/peppol-lookup/")
+    docs_response = client.get("/peppol-lookup/docs")
+    script_response = client.get("/peppol-lookup/embed/embed.js?v=45")
+    style_response = client.get("/peppol-lookup/embed/embed.css?v=45")
+    api_response = client.get("/peppol-lookup/api")
 
-    assert response.status_code == 307
-    assert response.headers["location"] == "/peppol-lookup/embed/sample.html"
+    assert root_response.status_code == 404
+    assert prefixed_response.status_code == 200
+    assert docs_response.status_code == 200
+    assert script_response.status_code == 200
+    assert style_response.status_code == 200
+    assert api_response.status_code == 200
+    assert "./embed/embed.css" in prefixed_response.text
+    assert "./embed/embed.js" in prefixed_response.text
 
 def test_redoc_is_disabled_and_swagger_remains_available() -> None:
     app = create_app(Settings())

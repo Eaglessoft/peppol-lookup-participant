@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir . \
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()"
+    CMD python -c "import os, urllib.request; p=os.environ.get('APP_CONTEXT_PATH', '').strip().rstrip('/'); p='' if p == '/' else p; urllib.request.urlopen(f'http://127.0.0.1:8080{p}/health', timeout=3).read()"
 
 ENTRYPOINT ["/usr/local/bin/runtime-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
