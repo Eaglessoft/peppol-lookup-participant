@@ -4,7 +4,7 @@ from urllib.parse import quote
 import httpx
 
 from app.peppol.models import DirectoryResult, ParticipantIdentifier
-from app.peppol.sources.base import timeout_from_ms
+from app.peppol.sources.base import request_with_rate_limit_retry, timeout_from_ms
 
 PARTICIPANT_VALUE_PATTERN = re.compile(r"^(?:iso6523-actorid-upis::)?[A-Za-z0-9]{4}:.+")
 
@@ -24,7 +24,9 @@ class DirectoryClient:
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             last_response: httpx.Response | None = None
             for url, exact_required in urls:
-                response = await client.get(url, headers={"Accept": "application/json"})
+                response = await request_with_rate_limit_retry(
+                    client, "GET", url, headers={"Accept": "application/json"}
+                )
                 last_response = response
                 if response.status_code == 404:
                     continue
@@ -49,7 +51,9 @@ class DirectoryClient:
         encoded_query = quote(query.strip(), safe="")
         url = f"{self.base_url}/search/1.0/json?q={encoded_query}"
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.get(url, headers={"Accept": "application/json"})
+            response = await request_with_rate_limit_retry(
+                client, "GET", url, headers={"Accept": "application/json"}
+            )
             if response.status_code == 404:
                 raise httpx.HTTPStatusError(
                     "Directory search not found",
@@ -79,9 +83,7 @@ def _payload_has_match(payload: object) -> bool:
     return True
 
 
-def _payload_has_exact_participant(
-    payload: object, participant: ParticipantIdentifier
-) -> bool:
+def _payload_has_exact_participant(payload: object, participant: ParticipantIdentifier) -> bool:
     expected = {participant.value.lower(), participant.compact.lower()}
     return any(value.lower() in expected for value in _participant_values(payload))
 
@@ -98,9 +100,7 @@ def participant_values_from_directory(payload: object) -> list[str]:
     return values
 
 
-def _filter_payload_to_participant(
-    payload: object, participant: ParticipantIdentifier
-) -> object:
+def _filter_payload_to_participant(payload: object, participant: ParticipantIdentifier) -> object:
     if not isinstance(payload, dict):
         return payload
     matches = payload.get("matches")

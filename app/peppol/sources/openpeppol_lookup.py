@@ -1,7 +1,7 @@
 import httpx
 
 from app.peppol.models import ParticipantIdentifier
-from app.peppol.sources.base import timeout_from_ms
+from app.peppol.sources.base import request_with_rate_limit_retry, timeout_from_ms
 
 
 class OpenPeppolLookupClient:
@@ -12,7 +12,9 @@ class OpenPeppolLookupClient:
     async def lookup(self, participant: ParticipantIdentifier) -> dict[str, object]:
         url = f"{self.base_url}/lookup"
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.post(
+            response = await request_with_rate_limit_retry(
+                client,
+                "POST",
                 url,
                 headers={"Accept": "application/json", "Content-Type": "application/json"},
                 json={"identifier": participant.compact},

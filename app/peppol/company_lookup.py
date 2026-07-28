@@ -71,7 +71,16 @@ class CompanyLookupService:
                 )
             )
 
+        concurrency = max(1, self.orchestrator.settings.peppol_company_lookup_concurrency)
+        semaphore = asyncio.Semaphore(concurrency)
+
         async def lookup_participant_value(
+            participant_value: str,
+        ) -> tuple[CandidateResult, LightLookupResponse | DetailLookupResponse | None]:
+            async with semaphore:
+                return await lookup_participant_value_unlocked(participant_value)
+
+        async def lookup_participant_value_unlocked(
             participant_value: str,
         ) -> tuple[CandidateResult, LightLookupResponse | DetailLookupResponse | None]:
             participant = ParticipantIdentifier(value=participant_value)

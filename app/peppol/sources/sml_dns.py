@@ -6,7 +6,7 @@ from urllib.parse import quote
 import httpx
 
 from app.peppol.models import ParticipantIdentifier, SmlResult
-from app.peppol.sources.base import timeout_from_ms
+from app.peppol.sources.base import request_with_rate_limit_retry, timeout_from_ms
 
 NAPTR_REPLACEMENT_PATTERN = re.compile(r"!.*?!([^!]+)!")
 
@@ -44,7 +44,9 @@ class SmlDnsClient:
         query_name = build_sml_query_name(participant, self.dns_zone)
         url = f"https://dns.google/resolve?name={quote(query_name)}&type=NAPTR"
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.get(url, headers={"Accept": "application/dns-json"})
+            response = await request_with_rate_limit_retry(
+                client, "GET", url, headers={"Accept": "application/dns-json"}
+            )
             response.raise_for_status()
             payload = response.json()
         answers = payload.get("Answer") or []

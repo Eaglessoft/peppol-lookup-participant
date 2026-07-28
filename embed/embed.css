@@ -28,33 +28,34 @@
 .peppol-lookup-widget[layout="full"],
 .peppol-lookup-widget.pl-full {
     min-height: 100vh;
-    background: #f6f8fb;
+    background: #ffffff;
 }
 
 .peppol-lookup-widget[layout="full"] .pl-shell,
 .peppol-lookup-widget.pl-full .pl-shell {
-    align-content: start;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     min-height: 100vh;
     padding: 0;
     border: 0;
     border-radius: 0;
-    background: #f6f8fb;
+    background: #ffffff;
     gap: 0;
 }
 
 .peppol-lookup-widget[layout="full"] .pl-topbar,
 .peppol-lookup-widget.pl-full .pl-topbar {
-    min-height: 72px;
-    padding: 0 max(24px, calc((100vw - 1380px) / 2));
-    border-bottom: 1px solid #dbe3ee;
-    background: #ffffff;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+    width: 100%;
+    min-height: 60px;
+    padding: 8px 0;
+    background: #063389;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-
 .peppol-lookup-widget[layout="full"] .pl-main,
 .peppol-lookup-widget.pl-full .pl-main {
-    width: min(100% - 48px, 1360px);
+    flex: 1 0 auto;
+    width: min(100% - 40px, 1200px);
     margin: 0 auto;
     padding: 24px 0 48px;
 }
@@ -62,13 +63,12 @@
 .peppol-lookup-widget[layout="full"] .pl-search-band,
 .peppol-lookup-widget.pl-full .pl-search-band {
     display: grid;
-    min-height: 190px;
     align-items: center;
-    border: 1px solid #102a43;
-    border-radius: 8px;
-    background: #102a43;
-    padding: 34px;
-    box-shadow: 0 18px 40px rgba(15, 42, 67, 0.18);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+    padding: 28px;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 }
 
 .peppol-lookup-widget[layout="full"] .pl-form,
@@ -91,8 +91,8 @@
 
 .peppol-lookup-widget[layout="full"] label span,
 .peppol-lookup-widget.pl-full label span {
-    color: #ffffff;
-    text-shadow: 0 1px 1px rgba(17, 24, 39, 0.35);
+    color: #1e293b;
+    text-shadow: none;
 }
 
 .peppol-lookup-widget .pl-required {
@@ -131,32 +131,72 @@
     gap: 12px;
 }
 
-.peppol-lookup-widget .pl-brand {
+.peppol-lookup-widget .pl-topbar-inner {
     display: flex;
+    width: min(100% - 40px, 1200px);
+    min-height: 60px;
     align-items: center;
-    gap: 12px;
-    min-width: 0;
+    margin: 0 auto;
 }
 
-.peppol-lookup-widget .pl-brand > div {
-    display: grid;
-    gap: 2px;
+.peppol-lookup-widget .pl-eaglessoft-logo {
+    display: block;
+    max-height: 60px;
+    width: auto;
+    height: auto;
+}
+.peppol-lookup-widget .pl-page-title {
+    width: min(100% - 40px, 1200px);
+    margin: 0 auto 20px;
+    padding: 18px 0 10px;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: center;
 }
 
-.peppol-lookup-widget[layout="full"] .pl-brand strong,
-.peppol-lookup-widget.pl-full .pl-brand strong {
-    color: #102a43;
-    font-size: 25px;
-    font-weight: 760;
-    line-height: 1;
+.peppol-lookup-widget .pl-page-title h1 {
+    margin: 0;
+    color: #1e293b;
+    font-size: 2rem;
+    font-weight: 600;
+    line-height: 1.2;
 }
 
-.peppol-lookup-widget[layout="full"] .pl-brand span,
-.peppol-lookup-widget.pl-full .pl-brand span {
-    color: #52677a;
-    font-size: 14px;
+.peppol-lookup-widget .pl-page-title p {
+    margin: 8px 0 0;
+    color: #64748b;
+    font-size: 1rem;
+    font-weight: 400;
 }
 
+.peppol-lookup-widget .pl-footer {
+    width: min(100% - 40px, 1200px);
+    margin: 60px auto 0;
+    padding: 30px 20px;
+    border-top: 1px solid #e2e8f0;
+    background: #ffffff;
+    color: #64748b;
+    text-align: center;
+}
+
+.peppol-lookup-widget .pl-footer strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #1e293b;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.peppol-lookup-widget .pl-footer span {
+    color: #64748b;
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+
+.peppol-lookup-widget .pl-footer a {
+    color: #6794f1;
+    font-size: 0.75rem;
+    text-decoration: none;
+}
 .peppol-lookup-widget .pl-candidate {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -239,14 +279,15 @@
 .peppol-lookup-widget.pl-full input,
 .peppol-lookup-widget.pl-full select {
     min-height: 50px;
-    border-color: #e2e8f0;
+    border-color: #cbd5e1;
+    background: #ffffff;
     font-size: 16px;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 .peppol-lookup-widget button {
     border: 0;
-    background: #0f766e;
+    background: #063389;
     color: #ffffff;
     cursor: pointer;
     font-weight: 650;
@@ -283,7 +324,7 @@
 }
 
 .peppol-lookup-widget button:hover {
-    background: #115e59;
+    background: #052766;
 }
 
 .peppol-lookup-widget .pl-result {
@@ -409,13 +450,13 @@
 }
 
 .peppol-lookup-widget .pl-loading-step[data-progress="done"]::before {
-    border-color: #0f766e;
-    background: #0f766e;
+    border-color: #106cc7;
+    background: #106cc7;
 }
 
 .peppol-lookup-widget .pl-loading-step[data-progress="active"]::before {
-    border-color: #0f766e;
-    box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.14);
+    border-color: #106cc7;
+    box-shadow: 0 0 0 4px rgba(16, 108, 199, 0.14);
 }
 
 .peppol-lookup-widget .pl-loading-step strong {
@@ -904,21 +945,28 @@
 }
 
 @media (max-width: 760px) {
-    .peppol-lookup-widget[layout="full"] .pl-topbar,
-    .peppol-lookup-widget.pl-full .pl-topbar {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-        padding: 12px 16px 0;
-    }
-
+    .peppol-lookup-widget .pl-topbar-inner,
+    .peppol-lookup-widget .pl-page-title,
+    .peppol-lookup-widget .pl-footer,
     .peppol-lookup-widget[layout="full"] .pl-main,
     .peppol-lookup-widget.pl-full .pl-main {
         width: calc(100% - 32px);
     }
 
+    .peppol-lookup-widget .pl-eaglessoft-logo {
+        max-height: 40px;
+    }
+
+    .peppol-lookup-widget .pl-page-title h1 {
+        font-size: 1.75rem;
+    }
+
+    .peppol-lookup-widget .pl-page-title p {
+        font-size: 0.9rem;
+    }
+
     .peppol-lookup-widget[layout="full"] .pl-search-band,
     .peppol-lookup-widget.pl-full .pl-search-band {
-        min-height: auto;
         padding: 24px 16px;
     }
 
@@ -931,22 +979,14 @@
         grid-template-columns: 1fr;
     }
 
-    .peppol-lookup-widget[layout="full"] .pl-brand strong,
-    .peppol-lookup-widget.pl-full .pl-brand strong {
-        font-size: 24px;
-    }
-
-    .peppol-lookup-widget .pl-dti-row {
-        grid-template-columns: 1fr;
+    .peppol-lookup-widget .pl-dti-row,
+    .peppol-lookup-widget .pl-tech-list div,
+    .peppol-lookup-widget .pl-entity-row {
+        grid-template-columns: 1fr !important;
     }
 
     .peppol-lookup-widget .pl-tech-list div {
-        grid-template-columns: 1fr;
         gap: 4px;
-    }
-
-    .peppol-lookup-widget .pl-entity-row {
-        grid-template-columns: 1fr !important;
     }
 
     .peppol-lookup-widget .pl-entity-meta {
@@ -954,11 +994,17 @@
         min-width: 0;
     }
 
+    .peppol-lookup-widget .pl-actions,
     .peppol-lookup-widget .pl-status-stack {
-        justify-content: flex-start;
+        align-items: stretch;
+        width: 100%;
     }
 
-    .peppol-lookup-widget .pl-participant-actions {
-        justify-content: flex-start;
+    .peppol-lookup-widget .pl-secondary-button {
+        width: 100%;
+    }
+
+    .peppol-lookup-widget .pl-footer {
+        padding: 20px 15px;
     }
 }

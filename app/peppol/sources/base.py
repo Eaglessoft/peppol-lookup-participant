@@ -1,9 +1,16 @@
+import asyncio
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from time import perf_counter
 
 import httpx
 
 from app.peppol.models import SourceResult, SourceStatus
+
+RATE_LIMIT_RETRY_ATTEMPTS = 2
+RATE_LIMIT_RETRY_BACKOFF_SECONDS = 0.5
+RATE_LIMIT_RETRY_MAX_DELAY_SECONDS = 2.0
 
 
 async def measured_source[T](
@@ -55,6 +62,48 @@ async def measured_source[T](
         )
 
 
+async def request_with_rate_limit_retry(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    **kwargs: object,
+) -> httpx.Response:
+    response: httpx.Response | None = None
+    for attempt in range(RATE_LIMIT_RETRY_ATTEMPTS + 1):
+        response = await client.request(method, url, **kwargs)
+        if response.status_code != 429 or attempt >= RATE_LIMIT_RETRY_ATTEMPTS:
+            return response
+        await asyncio.sleep(_retry_delay_seconds(response, attempt))
+    return response
+
+
 def timeout_from_ms(timeout_ms: int) -> httpx.Timeout:
     seconds = max(timeout_ms, 100) / 1000
     return httpx.Timeout(seconds, connect=min(seconds, 5.0))
+
+
+def _retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
+    retry_after = response.headers.get("retry-after")
+    if retry_after:
+        parsed = _parse_retry_after_seconds(retry_after)
+        if parsed is not None:
+            return min(parsed, RATE_LIMIT_RETRY_MAX_DELAY_SECONDS)
+    return min(
+        RATE_LIMIT_RETRY_BACKOFF_SECONDS * (2**attempt),
+        RATE_LIMIT_RETRY_MAX_DELAY_SECONDS,
+    )
+
+
+def _parse_retry_after_seconds(value: str) -> float | None:
+    value = value.strip()
+    if not value:
+        return None
+    if value.isdigit():
+        return max(0.0, float(value))
+    try:
+        retry_at = parsedate_to_datetime(value)
+    except (TypeError, ValueError):
+        return None
+    if retry_at.tzinfo is None:
+        retry_at = retry_at.replace(tzinfo=UTC)
+    return max(0.0, (retry_at - datetime.now(UTC)).total_seconds())

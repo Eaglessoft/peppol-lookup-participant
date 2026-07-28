@@ -35,6 +35,8 @@ spec:
               value: "true"
             - name: PEPPOL_CACHE_TTL_SECONDS
               value: "900"
+            - name: PEPPOL_SOURCE_CACHE_MAX_ENTRIES
+              value: "500"
             - name: PEPPOL_SML_PROD_DNS_ZONE
               value: "participant.sml.prod.tech.peppol.org"
             - name: PEPPOL_SML_TEST_DNS_ZONE
@@ -43,6 +45,8 @@ spec:
               value: "120"
             - name: PEPPOL_RATE_LIMIT_WINDOW_SECONDS
               value: "60"
+            - name: PEPPOL_COMPANY_LOOKUP_CONCURRENCY
+              value: "4"
           readinessProbe:
             httpGet:
               path: /health
@@ -59,6 +63,11 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 3
             failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+            limits:
+              memory: "256Mi"
 ---
 apiVersion: v1
 kind: Service

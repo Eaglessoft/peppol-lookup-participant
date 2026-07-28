@@ -16,9 +16,10 @@ services:
       PEPPOL_CODELIST_AUTO_REFRESH: "false"
       PEPPOL_CODELIST_REQUIRED: "true"
       PEPPOL_CACHE_TTL_SECONDS: "900"
+      PEPPOL_SOURCE_CACHE_MAX_ENTRIES: "500"
       PEPPOL_SML_PROD_DNS_ZONE: "participant.sml.prod.tech.peppol.org"
       PEPPOL_SML_TEST_DNS_ZONE: "participant.sml.test.tech.peppol.org"
       PEPPOL_RATE_LIMIT_REQUESTS: "120"
       PEPPOL_RATE_LIMIT_WINDOW_SECONDS: "60"
+      PEPPOL_COMPANY_LOOKUP_CONCURRENCY: "4"
     restart: unless-stopped
-

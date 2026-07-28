@@ -1021,13 +1021,14 @@
             this.innerHTML = `
                 <section class="pl-shell">
                     <header class="pl-topbar">
-                        <div class="pl-brand">
-                            <div>
-                                <strong>Peppol Lookup</strong>
-                                <span>Participant discovery</span>
-                            </div>
+                        <div class="pl-topbar-inner">
+                            <img class="pl-eaglessoft-logo" src="${this.apiUrl}/embed/eaglessoft-logo.png" alt="Eaglessoft">
                         </div>
                     </header>
+                    <section class="pl-page-title">
+                        <h1>Peppol Participant Lookup</h1>
+                        <p>Discover Peppol participants, routing information and supported document types</p>
+                    </section>
                     <main class="pl-main">
                         <section class="pl-search-band">
                             <form data-form class="pl-form">
@@ -1056,6 +1057,10 @@
                             <div class="pl-empty">Search by country, identifier and ICD code</div>
                         </section>
                     </main>
+                    <footer class="pl-footer">
+                        <strong>Eaglessoft</strong>
+                        <span>Powered by Peppol network discovery | Source: <a href="https://github.com/Eaglessoft/peppol-lookup-participant" target="_blank" rel="noopener">GitHub</a></span>
+                    </footer>
                 </section>
             `;
         }

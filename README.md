@@ -83,6 +83,10 @@ service or from the website CDN, then point the widget to the deployed API URL:
   If `true`, API JSON responses are returned in pretty format.
 - `PEPPOL_RATE_LIMIT_REQUESTS` / `PEPPOL_RATE_LIMIT_WINDOW_SECONDS`
   Local per-client rate limit settings.
+- `PEPPOL_COMPANY_LOOKUP_CONCURRENCY` (default: `4`)
+  Maximum number of participant candidates queried concurrently during company discovery.
+- `PEPPOL_SOURCE_CACHE_MAX_ENTRIES` (default: `500`)
+  Maximum in-memory source cache entries kept per process.
 - `PEPPOL_CODELIST_REQUIRED` (default: `true`)
   Requires a valid local codelist cache at startup.
 - `PEPPOL_CODELIST_CACHE_DIR` (default: `data/codelists`)
@@ -127,6 +131,10 @@ Production defaults to `participant.sml.prod.tech.peppol.org`; test defaults to
 `participant.sml.test.tech.peppol.org`, which is used by the public Peppol TEST
 Directory. If your test participant is published to a different acceptance/test
 SMK, override `PEPPOL_SML_TEST_DNS_ZONE`.
+For Kubernetes deployments, set probe paths with the same prefix as `APP_CONTEXT_PATH`.
+For example, with `APP_CONTEXT_PATH=/peppol-lookup`, use `/peppol-lookup/health`.
+Avoid very small memory limits; the example manifest uses `128Mi` request and
+`256Mi` limit because lookup bursts load codelists and multiple HTTP responses.
 
 Refresh codelists:
 

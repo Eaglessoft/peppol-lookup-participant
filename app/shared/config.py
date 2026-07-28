@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     )
     peppol_source_timeout_ms: int = Field(default=8000, validation_alias="PEPPOL_SOURCE_TIMEOUT_MS")
     peppol_cache_ttl_seconds: int = Field(default=900, validation_alias="PEPPOL_CACHE_TTL_SECONDS")
+    peppol_source_cache_max_entries: int = Field(
+        default=500, validation_alias="PEPPOL_SOURCE_CACHE_MAX_ENTRIES"
+    )
     peppol_include_raw_max_bytes: int = Field(
         default=65536, validation_alias="PEPPOL_INCLUDE_RAW_MAX_BYTES"
     )
@@ -65,6 +68,9 @@ class Settings(BaseSettings):
     )
     peppol_rate_limit_window_seconds: int = Field(
         default=60, validation_alias="PEPPOL_RATE_LIMIT_WINDOW_SECONDS"
+    )
+    peppol_company_lookup_concurrency: int = Field(
+        default=4, validation_alias="PEPPOL_COMPANY_LOOKUP_CONCURRENCY"
     )
     peppol_directory_enabled: bool = Field(
         default=True, validation_alias="PEPPOL_DIRECTORY_ENABLED"
@@ -107,4 +113,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

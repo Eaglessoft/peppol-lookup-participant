@@ -7,7 +7,7 @@ from app.peppol.codelists.evaluator import CodeListEvaluator
 from app.peppol.models import ParticipantIdentifier, SmpResult
 from app.peppol.parsers.service_group import parse_service_group
 from app.peppol.parsers.service_metadata import parse_service_metadata
-from app.peppol.sources.base import timeout_from_ms
+from app.peppol.sources.base import request_with_rate_limit_retry, timeout_from_ms
 
 
 class SmpClient:
@@ -23,8 +23,8 @@ class SmpClient:
         service_group_url = f"{self.base_url}/{participant_path}"
 
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            group_response = await client.get(
-                service_group_url, headers={"Accept": "application/xml"}
+            group_response = await request_with_rate_limit_retry(
+                client, "GET", service_group_url, headers={"Accept": "application/xml"}
             )
             group_response.raise_for_status()
             service_group, document_refs = parse_service_group(group_response.text)
@@ -39,7 +39,9 @@ class SmpClient:
                 )
                 if not service_url:
                     service_url = f"{service_group_url}/services/{encoded_document}"
-                response = await client.get(service_url, headers={"Accept": "application/xml"})
+                response = await request_with_rate_limit_retry(
+                    client, "GET", service_url, headers={"Accept": "application/xml"}
+                )
                 response.raise_for_status()
                 return parse_service_metadata(
                     response.text,

@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict, deque
+from collections import OrderedDict, defaultdict, deque
 from collections.abc import Awaitable, Callable
 from copy import deepcopy
 from dataclasses import dataclass
@@ -21,9 +21,10 @@ class CacheEntry:
 
 
 class SourceTtlCache:
-    def __init__(self, ttl_seconds: int) -> None:
+    def __init__(self, ttl_seconds: int, max_entries: int) -> None:
         self.ttl_seconds = ttl_seconds
-        self._items: dict[str, CacheEntry] = {}
+        self.max_entries = max_entries
+        self._items: OrderedDict[str, CacheEntry] = OrderedDict()
 
     async def get_or_set[T](
         self,
@@ -32,8 +33,10 @@ class SourceTtlCache:
         refresh: bool,
     ) -> tuple[T | None, SourceResult]:
         now = monotonic()
+        self._prune_expired(now)
         entry = self._items.get(key)
         if not refresh and entry and entry.expires_at > now:
+            self._items.move_to_end(key)
             cached_result = entry.source_result.model_copy(deep=True)
             cached_result.durationMs = 0
             return deepcopy(entry.value), cached_result
@@ -45,6 +48,8 @@ class SourceTtlCache:
                 source_result=source_result.model_copy(deep=True),
                 expires_at=now + self.ttl_seconds,
             )
+            self._items.move_to_end(key)
+            self._enforce_size_limit()
         return value, source_result
 
     def stats(self) -> dict[str, int]:
@@ -52,9 +57,21 @@ class SourceTtlCache:
         expired = sum(1 for entry in self._items.values() if entry.expires_at <= now)
         return {
             "ttlSeconds": self.ttl_seconds,
+            "maxEntries": self.max_entries,
             "entries": len(self._items),
             "expiredEntries": expired,
         }
+
+    def _prune_expired(self, now: float) -> None:
+        for key in list(self._items):
+            if self._items[key].expires_at <= now:
+                self._items.pop(key, None)
+
+    def _enforce_size_limit(self) -> None:
+        if self.max_entries <= 0:
+            return
+        while len(self._items) > self.max_entries:
+            self._items.popitem(last=False)
 
 
 class LocalRateLimiter:
@@ -88,7 +105,10 @@ def build_orchestrator(settings: Settings) -> LookupOrchestrator:
         raise RuntimeError(
             "PEPPOL_CODELIST_REQUIRED is true but no valid codelist cache was loaded"
         )
-    orchestrator.source_cache = SourceTtlCache(settings.peppol_cache_ttl_seconds)
+    orchestrator.source_cache = SourceTtlCache(
+        settings.peppol_cache_ttl_seconds,
+        settings.peppol_source_cache_max_entries,
+    )
     return orchestrator
 
 
