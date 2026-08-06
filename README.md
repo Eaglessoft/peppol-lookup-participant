@@ -73,9 +73,9 @@ service or from the website CDN, then point the widget to the deployed API URL:
 - `APP_CONTEXT_PATH` (default: `/`)
   Application context path when the service is exposed behind a path prefix.
 - `LOG_FORMAT` (default: `json`)
-  Supported values: `json`, `plain`.
+  Supported values: `json`, `plain`, `text`. `text` is an alias for `plain`. In the container runtime this also applies to Uvicorn and HTTP client logs.
 - `LOG_LEVEL` (default: `INFO`)
-  Examples: `DEBUG`, `INFO`, `WARN`, `ERROR`.
+  Examples: `DEBUG`, `INFO`, `WARN`, `ERROR`. In the container runtime this also applies to Uvicorn and HTTP client logs.
 - `ALLOWED_ORIGINS` (default: `*`)
   CORS allowlist, comma-separated. For a public website, set this to the real
   website origin instead of `*`.
