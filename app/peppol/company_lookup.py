@@ -37,14 +37,14 @@ class CompanyLookupService:
         )
         candidate_results: list[CandidateResult] = []
         matches: list[LightLookupResponse | DetailLookupResponse] = []
-        directory_matches = await self._directory_identifier_search(
-            country, identifier, environments, refresh
-        )
         explicit_scheme_code = _explicit_scheme_code(identifier_type, self.codelists)
-        if explicit_scheme_code:
-            directory_matches = _filter_directory_matches_by_icd(
-                directory_matches, explicit_scheme_code
+        directory_matches = (
+            []
+            if explicit_scheme_code
+            else await self._directory_identifier_search(
+                country, identifier, environments, refresh
             )
+        )
         lookup_values = {
             participant_value
             for _, participant_value, validation in candidates

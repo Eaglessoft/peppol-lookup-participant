@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from time import perf_counter
 from typing import Any
@@ -47,20 +48,21 @@ class LookupOrchestrator:
         refresh: bool = False,
     ) -> LightLookupResponse | DetailLookupResponse:
         effective_timeout = timeout_ms or self.settings.peppol_source_timeout_ms
-        environment_results: list[EnvironmentResult] = []
-        source_results: list[SourceResult] = []
-
-        for environment in environments:
-            env_result, env_sources = await self._lookup_environment(
-                participant,
-                EnvironmentName(environment),
-                sources,
-                include_raw and mode == LookupMode.detail,
-                effective_timeout,
-                refresh,
+        lookup_results = await asyncio.gather(
+            *(
+                self._lookup_environment(
+                    participant,
+                    EnvironmentName(environment),
+                    sources,
+                    include_raw and mode == LookupMode.detail,
+                    effective_timeout,
+                    refresh,
+                )
+                for environment in environments
             )
-            environment_results.append(env_result)
-            source_results.extend(env_sources)
+        )
+        environment_results = [result[0] for result in lookup_results]
+        source_results = [source for result in lookup_results for source in result[1]]
 
         if mode == LookupMode.light:
             return self._to_light(participant, environment_results)

@@ -17,13 +17,16 @@ from app.peppol.codelists.participant_schemes import validate_candidate
 from app.peppol.codelists.processes import load_processes
 from app.peppol.codelists.transport_profiles import load_transport_profiles
 from app.peppol.company_lookup import (
+    CompanyLookupService,
     _directory_participant_values,
     _filter_directory_matches_by_icd,
     _scheme_country_warnings,
 )
 from app.peppol.models import (
     CodeListStatus,
+    DetailLookupResponse,
     DirectoryResult,
+    EnvironmentName,
     LightLookupResponse,
     LookupMode,
     ParticipantIdentifier,
@@ -502,6 +505,36 @@ def test_lookup_rate_limit_returns_429() -> None:
 
     assert first.status_code == 200
     assert second.status_code == 429
+
+
+def test_explicit_scheme_skips_broad_directory_discovery_but_keeps_exact_lookup() -> None:
+    class FakeOrchestrator:
+        settings = Settings(peppol_directory_enabled=True)
+
+        async def lookup(self, **kwargs):
+            assert kwargs["sources"] == {"directory", "sml", "smk", "smp"}
+            return DetailLookupResponse(
+                input={},
+                summary={"foundIn": ["test:smk", "test:smp"]},
+            )
+
+    evaluator = CodeListEvaluator("data/codelists")
+    service = CompanyLookupService(FakeOrchestrator(), evaluator)
+    result = asyncio.run(
+        service.lookup(
+            "BE",
+            "OPTBCNTRLP1007",
+            "9922",
+            LookupMode.detail,
+            [EnvironmentName.test],
+            20,
+            True,
+        )
+    )
+
+    assert len(result.candidates) == 1
+    assert len(result.matches) == 1
+    assert result.directoryMatches == []
 
 
 def test_explicit_scheme_bypasses_country_filter_with_warning() -> None:
