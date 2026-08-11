@@ -16,6 +16,7 @@ class ParticipantScheme:
     validation_regex: str | None = None
     source_state: str | None = None
     removal_date: str | None = None
+    registrable: bool = True
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ def load_participant_schemes(payload: dict[str, Any]) -> dict[str, ParticipantSc
             validation_regex=_validation_regex(str(row.get("validation-rules") or "")),
             source_state=str(row.get("state") or "") or None,
             removal_date=str(row.get("removal-date") or "") or None,
+            registrable=row.get("registrable") is not False,
         )
     return schemes
 
@@ -122,6 +124,8 @@ def validate_candidate(scheme: ParticipantScheme, identifier: str) -> CandidateV
     normalized = normalize_identifier_for_scheme(scheme.code, identifier)
     if scheme.status == CodeListStatus.removed:
         return CandidateValidation(False, "candidate_rejected", "scheme has been removed")
+    if not scheme.registrable:
+        return CandidateValidation(False, "candidate_rejected", "scheme is not registrable")
     if not scheme.validation_regex:
         return CandidateValidation(True, "candidate_valid")
     if re.fullmatch(scheme.validation_regex, normalized) is None:

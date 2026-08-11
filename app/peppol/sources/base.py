@@ -11,6 +11,7 @@ from app.peppol.models import SourceResult, SourceStatus
 RATE_LIMIT_RETRY_ATTEMPTS = 2
 RATE_LIMIT_RETRY_BACKOFF_SECONDS = 0.5
 RATE_LIMIT_RETRY_MAX_DELAY_SECONDS = 2.0
+TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 
 
 async def measured_source[T](
@@ -70,10 +71,21 @@ async def request_with_rate_limit_retry(
 ) -> httpx.Response:
     response: httpx.Response | None = None
     for attempt in range(RATE_LIMIT_RETRY_ATTEMPTS + 1):
-        response = await client.request(method, url, **kwargs)
-        if response.status_code != 429 or attempt >= RATE_LIMIT_RETRY_ATTEMPTS:
+        try:
+            response = await client.request(method, url, **kwargs)
+        except httpx.TransportError:
+            if attempt >= RATE_LIMIT_RETRY_ATTEMPTS:
+                raise
+            await asyncio.sleep(_retry_delay_seconds(None, attempt))
+            continue
+        if (
+            response.status_code not in TRANSIENT_HTTP_STATUSES
+            or attempt >= RATE_LIMIT_RETRY_ATTEMPTS
+        ):
             return response
         await asyncio.sleep(_retry_delay_seconds(response, attempt))
+    if response is None:  # pragma: no cover - loop always returns or raises
+        raise RuntimeError("request retry loop completed without a response")
     return response
 
 
@@ -82,8 +94,8 @@ def timeout_from_ms(timeout_ms: int) -> httpx.Timeout:
     return httpx.Timeout(seconds, connect=min(seconds, 5.0))
 
 
-def _retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
-    retry_after = response.headers.get("retry-after")
+def _retry_delay_seconds(response: httpx.Response | None, attempt: int) -> float:
+    retry_after = response.headers.get("retry-after") if response is not None else None
     if retry_after:
         parsed = _parse_retry_after_seconds(retry_after)
         if parsed is not None:

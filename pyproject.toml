@@ -31,10 +31,13 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+cache_dir = ".cache/pytest"
+addopts = "--basetemp=.cache/pytest-tmp"
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+cache-dir = ".cache/ruff"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

@@ -19,6 +19,7 @@ from app.peppol.codelists.transport_profiles import load_transport_profiles
 from app.peppol.company_lookup import (
     _directory_participant_values,
     _filter_directory_matches_by_icd,
+    _scheme_country_warnings,
 )
 from app.peppol.models import (
     CodeListStatus,
@@ -42,6 +43,7 @@ from app.peppol.sources.directory import (
 )
 from app.peppol.sources.openpeppol_lookup import OpenPeppolLookupClient
 from app.peppol.sources.sml_dns import build_sml_query_name, extract_smp_base_url
+from app.peppol.sources.smp import SmpClient
 from app.shared.config import Settings
 
 
@@ -179,7 +181,7 @@ def test_service_group_and_metadata_parser_extract_capabilities() -> None:
           </ServiceInformation>
         </ServiceMetadata>
         """,
-        "doc-1",
+        "busdox-docid-qns::doc-1",
         CodeListEvaluator("data/codelists").evaluate_document_type("doc-1"),
         None,
         CodeListEvaluator("data/codelists").evaluate_process,
@@ -207,6 +209,8 @@ def test_service_group_and_metadata_parser_extract_capabilities() -> None:
     assert service_group_from_href["documentReferenceUrls"]["busdox-docid-qns::doc-2"].endswith(
         "busdox-docid-qns%3A%3Adoc-2"
     )
+    assert service.documentTypeIdentifier.scheme == "busdox-docid-qns"
+    assert service.documentTypeIdentifier.value == "busdox-docid-qns::doc-1"
     assert service.processes[0].processIdentifier.value == "proc-1"
     assert service.processes[0].processIdentifier.codeListStatus == CodeListStatus.unsupported
     assert service.processes[0].endpoints[0].endpointReference == "https://ap.example/as4"
@@ -408,6 +412,40 @@ def test_codelist_evaluator_loads_cached_official_json() -> None:
     )
 
 
+def test_wildcard_document_type_scheme_is_normalized_for_codelist() -> None:
+    evaluator = CodeListEvaluator("data/codelists")
+    value = (
+        "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2::Invoice##"
+        "urn:peppol:pint:billing-1@my-1::2.1"
+    )
+    compact = f"peppol-doctype-wildcard::{value}"
+    wildcard_compact = compact.replace("::2.1", "*::2.1")
+
+    assert evaluator.evaluate_document_type(compact) == CodeListStatus.valid
+    assert evaluator.evaluate_document_type(wildcard_compact) == CodeListStatus.valid
+    assert evaluator.document_type_name(wildcard_compact) == (
+        evaluator.document_type_name(compact)
+    )
+    assert evaluator.evaluate_document_type(f"busdox-docid-qns::{value}") == (
+        CodeListStatus.removed
+    )
+    assert evaluator.document_type_name(compact) == evaluator.document_type_name(value)
+
+    service = parse_service_metadata(
+        "<ServiceMetadata />",
+        compact,
+        evaluator.evaluate_document_type(compact),
+        evaluator.document_type_name(compact),
+        evaluator.evaluate_process,
+        evaluator.evaluate_transport_profile,
+        False,
+        1024,
+    )
+    assert service.documentTypeIdentifier.scheme == "peppol-doctype-wildcard"
+    assert service.documentTypeIdentifier.value == compact
+    assert service.documentTypeIdentifier.status == CodeListStatus.valid
+
+
 def test_participant_countries_endpoint_uses_codelist() -> None:
     app = create_app(Settings())
     client = TestClient(app)
@@ -464,6 +502,24 @@ def test_lookup_rate_limit_returns_429() -> None:
 
     assert first.status_code == 200
     assert second.status_code == 429
+
+
+def test_explicit_scheme_bypasses_country_filter_with_warning() -> None:
+    evaluator = CodeListEvaluator("data/codelists")
+
+    explicit = evaluator.participant_candidate_evaluations(
+        "MY", "OPTBCNTRLP1007", "9922", 10
+    )
+    automatic = evaluator.participant_candidate_evaluations(
+        "MY", "OPTBCNTRLP1007", None, 10
+    )
+
+    assert explicit[0][1] == "9922:OPTBCNTRLP1007"
+    assert explicit[0][2].valid is True
+    assert all(scheme.code != "9922" for scheme, _, _ in automatic)
+    assert _scheme_country_warnings(explicit[0][0].countries, "MY") == [
+        "Scheme country AD does not match requested country MY"
+    ]
 
 
 def test_participant_scheme_check_digit_validation() -> None:
@@ -690,3 +746,78 @@ def test_rate_limited_request_is_retried() -> None:
 
     assert response.status_code == 200
     assert calls == 3
+
+
+def test_request_retries_transient_server_error(monkeypatch) -> None:
+    calls = 0
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503 if calls < 3 else 200, request=request)
+
+    async def run() -> httpx.Response:
+        transport = httpx.MockTransport(handler)
+        async with httpx.AsyncClient(transport=transport) as client:
+            return await request_with_rate_limit_retry(client, "GET", "https://example.test")
+
+    monkeypatch.setattr("app.peppol.sources.base.asyncio.sleep", no_sleep)
+    response = asyncio.run(run())
+
+    assert response.status_code == 200
+    assert calls == 3
+
+
+def test_smp_lookup_preserves_successful_metadata_when_one_document_fails(monkeypatch) -> None:
+    group_xml = """
+    <ServiceGroup>
+      <ParticipantIdentifier scheme="iso6523-actorid-upis">9922:test</ParticipantIdentifier>
+      <ServiceMetadataReferenceCollection>
+        <ServiceMetadataReference href="https://smp.example/p/services/doc-ok" />
+        <ServiceMetadataReference href="https://smp.example/p/services/doc-missing" />
+      </ServiceMetadataReferenceCollection>
+    </ServiceGroup>
+    """
+    metadata_xml = """
+    <ServiceMetadata>
+      <ServiceInformation>
+        <ProcessList>
+          <Process>
+            <ProcessIdentifier scheme="cenbii-procid-ubl">proc-1</ProcessIdentifier>
+            <ServiceEndpointList />
+          </Process>
+        </ProcessList>
+      </ServiceInformation>
+    </ServiceMetadata>
+    """
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if "/services/" not in request.url.path:
+            return httpx.Response(200, text=group_xml, request=request)
+        if request.url.path.endswith("doc-ok"):
+            return httpx.Response(200, text=metadata_xml, request=request)
+        return httpx.Response(404, request=request)
+
+    real_async_client = httpx.AsyncClient
+
+    def fake_async_client(**kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return real_async_client(**kwargs)
+
+    monkeypatch.setattr("app.peppol.sources.smp.httpx.AsyncClient", fake_async_client)
+    result = asyncio.run(
+        SmpClient(
+            "https://smp.example", 1000, CodeListEvaluator("data/codelists")
+        ).lookup(ParticipantIdentifier(value="9922:test"), False, 1024)
+    )
+
+    assert result.metadataStatus == "partial"
+    assert result.metadataTotal == 2
+    assert result.metadataSuccessful == 1
+    assert result.metadataFailed == 1
+    assert len(result.services) == 1
+    assert result.metadataFailures[0]["documentTypeIdentifier"] == "doc-missing"
+    assert result.metadataFailures[0]["httpStatus"] == 404

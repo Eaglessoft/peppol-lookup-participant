@@ -4,6 +4,7 @@
 .vscode
 .venv
 __pycache__
+.cache
 .pytest_cache
 .ruff_cache
 .mypy_cache

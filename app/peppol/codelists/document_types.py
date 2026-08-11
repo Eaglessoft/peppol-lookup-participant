@@ -14,9 +14,12 @@ def load_document_type_names(payload: dict[str, Any]) -> dict[str, str]:
         if not isinstance(row, dict):
             continue
         value = str(row.get("value") or row.get("document-type-identifier") or "").strip()
+        scheme = str(row.get("scheme") or "").strip()
         name = str(row.get("name") or "").strip()
         if value and name:
-            names[value] = name
+            names.setdefault(value, name)
+            if scheme:
+                names[f"{scheme}::{value}"] = name
     return names
 
 
@@ -55,7 +58,11 @@ def _load_value_statuses(payload: dict[str, Any]) -> dict[str, CodeListStatus]:
             or ""
         ).strip()
         if value:
-            values[value] = _status(row)
+            status = _status(row)
+            values.setdefault(value, status)
+            scheme = str(row.get("scheme") or "").strip()
+            if scheme:
+                values[f"{scheme}::{value}"] = status
     return values
 
 

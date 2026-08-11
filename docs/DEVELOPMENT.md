@@ -20,13 +20,23 @@ valid local codelist cache.
 ## Test
 
 ```bash
+PYTHONPYCACHEPREFIX=.cache/python python -m pytest
+```
+
+PowerShell:
+
+```powershell
+$env:PYTHONPYCACHEPREFIX = ".cache/python"
 python -m pytest
 ```
+
+Pytest, Ruff, and Python bytecode caches are kept under `.cache/`. The shared
+VS Code tasks set the bytecode cache location automatically.
 
 ## Lint
 
 ```bash
-python -m ruff check .
+PYTHONPYCACHEPREFIX=.cache/python python -m ruff check .
 ```
 
 ## VS Code

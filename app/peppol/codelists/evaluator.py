@@ -69,16 +69,18 @@ class CodeListEvaluator:
         return scheme.status if scheme else CodeListStatus.unsupported
 
     def evaluate_document_type(self, value: str) -> CodeListStatus:
-        normalized_value = _strip_identifier_scheme(value, "busdox-docid-qns")
-        if normalized_value in self.document_types:
-            return self.document_types[normalized_value]
+        for candidate in _document_type_lookup_candidates(value):
+            if candidate in self.document_types:
+                return self.document_types[candidate]
         if "document_types" not in self.loaded_from_cache:
             return CodeListStatus.unknown
         return CodeListStatus.unsupported
 
     def document_type_name(self, value: str) -> str | None:
-        normalized_value = _strip_identifier_scheme(value, "busdox-docid-qns")
-        return self.document_type_names.get(normalized_value)
+        for candidate in _document_type_lookup_candidates(value):
+            if candidate in self.document_type_names:
+                return self.document_type_names[candidate]
+        return None
 
     def evaluate_process(self, value: str) -> CodeListStatus:
         return self.processes.get(value, CodeListStatus.unsupported)
@@ -91,6 +93,7 @@ class CodeListEvaluator:
             country
             for scheme in self.participant_schemes.values()
             if scheme.status in {CodeListStatus.valid, CodeListStatus.deprecated}
+            and scheme.registrable
             for country in scheme.countries
         }
         return sorted(countries)
@@ -103,20 +106,8 @@ class CodeListEvaluator:
         identifier_type = identifier_type.lower() if identifier_type else None
         matches: list[tuple[ParticipantScheme, str]] = []
 
-        for scheme in self.participant_schemes.values():
-            country_match = not scheme.countries or country in scheme.countries
-            type_match = (
-                not identifier_type
-                or identifier_type in scheme.identifier_types
-                or identifier_type == scheme.code
-            )
-            status_match = scheme.status in {CodeListStatus.valid, CodeListStatus.deprecated}
-            if (
-                country_match
-                and type_match
-                and status_match
-                and candidate_is_valid(scheme, normalized_identifier)
-            ):
+        for scheme in self._participant_candidate_schemes(country, identifier_type):
+            if candidate_is_valid(scheme, normalized_identifier):
                 candidate_identifier = normalize_identifier_for_scheme(
                     scheme.code, normalized_identifier
                 )
@@ -133,15 +124,7 @@ class CodeListEvaluator:
         identifier_type = identifier_type.lower() if identifier_type else None
         matches: list[tuple[ParticipantScheme, str, CandidateValidation]] = []
 
-        for scheme in self.participant_schemes.values():
-            country_match = not scheme.countries or country in scheme.countries
-            type_match = (
-                not identifier_type
-                or identifier_type in scheme.identifier_types
-                or identifier_type == scheme.code
-            )
-            if not country_match or not type_match:
-                continue
+        for scheme in self._participant_candidate_schemes(country, identifier_type):
             candidate_identifier = normalize_identifier_for_scheme(
                 scheme.code, normalized_identifier
             )
@@ -150,6 +133,27 @@ class CodeListEvaluator:
             if len(matches) >= max_candidates:
                 break
         return matches
+
+    def _participant_candidate_schemes(
+        self, country: str, identifier_type: str | None
+    ) -> list[ParticipantScheme]:
+        explicit_scheme = self.participant_schemes.get(identifier_type or "")
+        if explicit_scheme:
+            return [explicit_scheme]
+
+        eligible = [
+            scheme
+            for scheme in self.participant_schemes.values()
+            if scheme.status in {CodeListStatus.valid, CodeListStatus.deprecated}
+            and scheme.registrable
+            and (not identifier_type or identifier_type in scheme.identifier_types)
+            and (not scheme.countries or country in scheme.countries)
+        ]
+        country_specific = [scheme for scheme in eligible if country in scheme.countries]
+        global_schemes = [scheme for scheme in eligible if not scheme.countries]
+        return sorted(country_specific, key=_participant_scheme_status_priority) + sorted(
+            global_schemes, key=_participant_scheme_status_priority
+        )
 
     def metadata(self) -> dict[str, object]:
         return {
@@ -187,6 +191,26 @@ class CodeListEvaluator:
         return "built-in-starter"
 
 
-def _strip_identifier_scheme(value: str, scheme: str) -> str:
-    prefix = f"{scheme}::"
-    return value[len(prefix) :] if value.startswith(prefix) else value
+def _participant_scheme_status_priority(scheme: ParticipantScheme) -> int:
+    return 0 if scheme.status == CodeListStatus.valid else 1
+
+
+def _document_type_lookup_candidates(value: str) -> list[str]:
+    compact_values = [value]
+    if value.startswith("peppol-doctype-wildcard::") and "*::" in value:
+        compact_values.append(value.replace("*::", "::"))
+
+    candidates: list[str] = []
+    for compact_value in compact_values:
+        for candidate in (compact_value, _strip_document_type_scheme(compact_value)):
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
+def _strip_document_type_scheme(value: str) -> str:
+    for scheme in ("busdox-docid-qns", "peppol-doctype-wildcard"):
+        prefix = f"{scheme}::"
+        if value.startswith(prefix):
+            return value[len(prefix) :]
+    return value
