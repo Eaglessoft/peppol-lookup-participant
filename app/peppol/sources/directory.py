@@ -4,62 +4,68 @@ from urllib.parse import quote
 import httpx
 
 from app.peppol.models import DirectoryResult, ParticipantIdentifier
-from app.peppol.sources.base import request_with_rate_limit_retry, timeout_from_ms
+from app.peppol.sources.base import (
+    SourceUnavailableError,
+    request_with_rate_limit_retry,
+    timeout_from_ms,
+)
 
 PARTICIPANT_VALUE_PATTERN = re.compile(r"^(?:iso6523-actorid-upis::)?[A-Za-z0-9]{4}:.+")
 
 
 class DirectoryClient:
-    def __init__(self, base_url: str, timeout_ms: int) -> None:
+    def __init__(
+        self, base_url: str, timeout_ms: int, client: httpx.AsyncClient | None = None
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout_from_ms(timeout_ms)
+        self.client = client
 
     async def lookup(self, participant: ParticipantIdentifier) -> DirectoryResult:
         encoded_participant = quote(participant.compact, safe="")
-        urls = [
-            (f"{self.base_url}/businesscard/{encoded_participant}", False),
-            (f"{self.base_url}/api/businesscard/{encoded_participant}", False),
-            (f"{self.base_url}/search/1.0/json?q={encoded_participant}", True),
-        ]
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            last_response: httpx.Response | None = None
-            for url, exact_required in urls:
-                response = await request_with_rate_limit_retry(
-                    client, "GET", url, headers={"Accept": "application/json"}
-                )
-                last_response = response
-                if response.status_code == 404:
-                    continue
-                response.raise_for_status()
-                payload = response.json()
-                if not _payload_has_match(payload):
-                    continue
-                if exact_required and not _payload_has_exact_participant(payload, participant):
-                    continue
-                if exact_required:
-                    payload = _filter_payload_to_participant(payload, participant)
-                return DirectoryResult(baseUrl=self.base_url, found=True, businessCard=payload)
-            if last_response is not None:
+        url = f"{self.base_url}/search/1.0/json?q={encoded_participant}"
+        client = self.client or httpx.AsyncClient(timeout=self.timeout, trust_env=False)
+        try:
+            response = await request_with_rate_limit_retry(
+                client,
+                "GET",
+                url,
+                headers={"Accept": "application/json"},
+                timeout=self.timeout,
+            )
+            if response.status_code == 404:
+                raise SourceUnavailableError("Directory endpoint unavailable", 404)
+            response.raise_for_status()
+            payload = response.json()
+            if not _payload_has_exact_participant(payload, participant):
                 raise httpx.HTTPStatusError(
                     "Directory participant not found",
-                    request=last_response.request,
-                    response=httpx.Response(404, request=last_response.request),
+                    request=response.request,
+                    response=httpx.Response(404, request=response.request),
                 )
-        return DirectoryResult(baseUrl=self.base_url, found=False, businessCard=None)
+            return DirectoryResult(
+                baseUrl=self.base_url,
+                found=True,
+                businessCard=_filter_payload_to_participant(payload, participant),
+            )
+        finally:
+            if self.client is None:
+                await client.aclose()
 
     async def search(self, query: str) -> DirectoryResult:
         encoded_query = quote(query.strip(), safe="")
         url = f"{self.base_url}/search/1.0/json?q={encoded_query}"
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+        client = self.client or httpx.AsyncClient(timeout=self.timeout, trust_env=False)
+        try:
             response = await request_with_rate_limit_retry(
-                client, "GET", url, headers={"Accept": "application/json"}
+                client,
+                "GET",
+                url,
+                headers={"Accept": "application/json"},
+                timeout=self.timeout,
             )
             if response.status_code == 404:
-                raise httpx.HTTPStatusError(
-                    "Directory search not found",
-                    request=response.request,
-                    response=response,
-                )
+                raise SourceUnavailableError("Directory endpoint unavailable", 404)
             response.raise_for_status()
             payload = response.json()
             if not _payload_has_match(payload):
@@ -69,6 +75,9 @@ class DirectoryClient:
                     response=httpx.Response(404, request=response.request),
                 )
             return DirectoryResult(baseUrl=self.base_url, found=True, businessCard=payload)
+        finally:
+            if self.client is None:
+                await client.aclose()
 
 
 def _payload_has_match(payload: object) -> bool:

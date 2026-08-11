@@ -370,6 +370,44 @@
     padding: 2px 0 8px;
 }
 
+.peppol-lookup-widget .pl-results-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.peppol-lookup-widget button.pl-result-refresh {
+    display: inline-flex;
+    width: auto;
+    min-height: 38px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    font-size: 14px;
+    font-weight: 650;
+}
+
+.peppol-lookup-widget button.pl-result-refresh:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+    color: #0f172a;
+}
+
+.peppol-lookup-widget .pl-result-refresh svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
 .peppol-lookup-widget .pl-found-badge {
     justify-self: start;
     padding: 6px 10px;
@@ -409,6 +447,56 @@
     display: grid;
     gap: 8px;
     padding-top: 12px;
+}
+
+.peppol-lookup-widget .pl-loading-overview {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.peppol-lookup-widget .pl-loading-overview > div:last-child {
+    display: grid;
+    gap: 4px;
+}
+
+.peppol-lookup-widget .pl-loading-overview > div:last-child > strong {
+    color: #0f172a;
+    font-size: 18px;
+}
+
+.peppol-lookup-widget .pl-loading-overview small {
+    color: #64748b;
+    font-size: 12px;
+}
+
+.peppol-lookup-widget .pl-progress-ring {
+    --progress: 0deg;
+    position: relative;
+    display: grid;
+    flex: 0 0 72px;
+    width: 72px;
+    height: 72px;
+    place-items: center;
+    border-radius: 50%;
+    background: conic-gradient(#106cc7 var(--progress), #dbeafe 0);
+    transition: background 120ms linear;
+}
+
+.peppol-lookup-widget .pl-progress-ring::after {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border-radius: 50%;
+    background: #ffffff;
+}
+
+.peppol-lookup-widget .pl-progress-ring strong {
+    position: relative;
+    z-index: 1;
+    color: #063389;
+    font-size: 16px;
+    font-variant-numeric: tabular-nums;
 }
 
 .peppol-lookup-widget .pl-loading-step {
@@ -1001,6 +1089,15 @@
     }
 
     .peppol-lookup-widget .pl-secondary-button {
+        width: 100%;
+    }
+
+    .peppol-lookup-widget .pl-results-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .peppol-lookup-widget button.pl-result-refresh {
         width: 100%;
     }
 

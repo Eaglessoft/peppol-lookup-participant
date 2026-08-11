@@ -2,13 +2,15 @@ import asyncio
 import os
 import shutil
 from pathlib import Path
+from time import perf_counter
 from uuid import uuid4
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from app.api.v1.lookup_routes import get_orchestrator
+from app.api.v1.lookup_routes import _with_request_timeout, get_orchestrator
 from app.main import create_app
 from app.peppol.codelists.cache import CodeListCache
 from app.peppol.codelists.document_types import load_document_types
@@ -21,25 +23,31 @@ from app.peppol.company_lookup import (
     _directory_participant_values,
     _filter_directory_matches_by_icd,
     _scheme_country_warnings,
+    _unique_participant_values,
 )
 from app.peppol.models import (
     CodeListStatus,
     DetailLookupResponse,
     DirectoryResult,
     EnvironmentName,
+    EnvironmentResult,
     LightLookupResponse,
     LookupMode,
     ParticipantIdentifier,
     SmlResult,
     SmpResult,
+    SourceResult,
+    SourceStatus,
 )
 from app.peppol.normalizer import normalize_participant_id
 from app.peppol.orchestrator import LookupOrchestrator, _with_required_source_dependencies
 from app.peppol.parsers.business_card import business_entities_from_directory
 from app.peppol.parsers.service_group import parse_service_group
 from app.peppol.parsers.service_metadata import parse_service_metadata
-from app.peppol.sources.base import request_with_rate_limit_retry
+from app.peppol.runtime import SourceTtlCache
+from app.peppol.sources.base import measured_source, request_with_rate_limit_retry
 from app.peppol.sources.directory import (
+    DirectoryClient,
     _filter_payload_to_participant,
     _payload_has_exact_participant,
     participant_values_from_directory,
@@ -48,6 +56,172 @@ from app.peppol.sources.openpeppol_lookup import OpenPeppolLookupClient
 from app.peppol.sources.sml_dns import build_sml_query_name, extract_smp_base_url
 from app.peppol.sources.smp import SmpClient
 from app.shared.config import Settings
+
+
+def test_total_request_timeout_returns_504() -> None:
+    async def slow_lookup():
+        await asyncio.sleep(0.05)
+        return "late"
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            _with_request_timeout(
+                slow_lookup(), Settings(peppol_request_timeout_ms=1)
+            )
+        )
+
+    assert exc_info.value.status_code == 504
+
+
+def test_all_requested_sources_timeout_returns_504() -> None:
+    orchestrator = LookupOrchestrator(Settings())
+
+    async def timed_out_environment(*args, **kwargs):
+        environment = args[1]
+        return (
+            EnvironmentResult(name=environment, status="not_found"),
+            [
+                SourceResult(
+                    source=f"{environment}:directory",
+                    status=SourceStatus.timeout,
+                    durationMs=10,
+                )
+            ],
+        )
+
+    orchestrator._lookup_environment = timed_out_environment
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            orchestrator.lookup(
+                participant=ParticipantIdentifier(value="0208:0123456749"),
+                mode=LookupMode.light,
+                environments=["prod"],
+                sources={"directory"},
+                include_raw=False,
+                timeout_ms=100,
+                refresh=True,
+                raise_on_all_timeout=True,
+            )
+        )
+    asyncio.run(orchestrator.aclose())
+
+    assert exc_info.value.status_code == 504
+
+
+def test_health_snapshot_exposes_last_check() -> None:
+    orchestrator = LookupOrchestrator(Settings())
+    orchestrator._last_health_check = {
+        "status": "checked",
+        "checkedAt": "2026-08-11T00:00:00+00:00",
+        "results": [],
+    }
+
+    orchestrator._last_health_check_at = perf_counter()
+    snapshot = orchestrator.health_snapshot()
+    cached_check = asyncio.run(orchestrator.check_source_health(force=False))
+    asyncio.run(orchestrator.aclose())
+
+    assert snapshot["status"] == "checked"
+    assert snapshot["cached"] is True
+    assert snapshot["checkedAt"] == "2026-08-11T00:00:00+00:00"
+    assert cached_check["cached"] is True
+    assert cached_check["checkedAt"] == "2026-08-11T00:00:00+00:00"
+
+
+def test_source_cache_reports_positive_and_negative_entries() -> None:
+    cache = SourceTtlCache(ttl_seconds=60, max_entries=10)
+
+    async def positive():
+        return "found", SourceResult(
+            source="prod:sml", status=SourceStatus.success, durationMs=1
+        )
+
+    async def negative():
+        return None, SourceResult(
+            source="test:smk", status=SourceStatus.not_found, durationMs=1
+        )
+
+    asyncio.run(cache.get_or_set("positive", positive, False))
+    asyncio.run(cache.get_or_set("negative", negative, False))
+
+    assert cache.stats()["positiveEntries"] == 1
+    assert cache.stats()["negativeEntries"] == 1
+
+
+def test_shared_http_client_keeps_candidate_responses_isolated() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        participant = request.url.params["q"]
+        return httpx.Response(
+            200,
+            request=request,
+            json={
+                "total-result-count": 1,
+                "matches": [{"participantID": participant}],
+            },
+        )
+
+    async def run_lookups():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            first, second = await asyncio.gather(
+                DirectoryClient("https://directory.example", 1000, client).lookup(
+                    ParticipantIdentifier(value="9925:BE1111111111")
+                ),
+                DirectoryClient("https://directory.example", 1000, client).lookup(
+                    ParticipantIdentifier(value="9925:BE2222222222")
+                ),
+            )
+            return first, second
+
+    first, second = asyncio.run(run_lookups())
+
+    assert first.businessCard["matches"][0]["participantID"].endswith("BE1111111111")
+    assert second.businessCard["matches"][0]["participantID"].endswith("BE2222222222")
+
+
+def test_directory_endpoint_404_is_reported_as_unavailable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, request=request)
+
+    async def run_lookup():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await measured_source(
+                "test:directory",
+                lambda: DirectoryClient(
+                    "https://test-directory.example", 1000, client
+                ).lookup(ParticipantIdentifier(value="0208:0123456749")),
+            )
+
+    result, source = asyncio.run(run_lookup())
+
+    assert result is None
+    assert source.status == SourceStatus.error
+    assert source.httpStatus == 404
+    assert source.error == "Directory endpoint unavailable"
+
+
+def test_directory_empty_successful_search_is_participant_not_found() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            json={"total-result-count": 0, "matches": []},
+        )
+
+    async def run_lookup():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await measured_source(
+                "prod:directory",
+                lambda: DirectoryClient(
+                    "https://directory.example", 1000, client
+                ).lookup(ParticipantIdentifier(value="0208:0123456749")),
+            )
+
+    result, source = asyncio.run(run_lookup())
+
+    assert result is None
+    assert source.status == SourceStatus.not_found
+    assert source.httpStatus == 404
+
 
 
 def test_api_info_returns_service_metadata() -> None:
@@ -218,6 +392,9 @@ def test_service_group_and_metadata_parser_extract_capabilities() -> None:
     assert service.processes[0].processIdentifier.codeListStatus == CodeListStatus.unsupported
     assert service.processes[0].endpoints[0].endpointReference == "https://ap.example/as4"
     assert service.processes[0].endpoints[0].certificate["fingerprints"]["sha256"] is None
+    assert service.processes[0].endpoints[0].certificate["rawBase64"] is None
+    assert service.rawXmlIncluded is False
+    assert service.rawXml is None
 
 
 def test_service_group_parser_ignores_null_document_references() -> None:
@@ -508,14 +685,28 @@ def test_lookup_rate_limit_returns_429() -> None:
 
 
 def test_explicit_scheme_skips_broad_directory_discovery_but_keeps_exact_lookup() -> None:
+    calls = []
+
     class FakeOrchestrator:
         settings = Settings(peppol_directory_enabled=True)
 
         async def lookup(self, **kwargs):
-            assert kwargs["sources"] == {"directory", "sml", "smk", "smp"}
+            calls.append(kwargs["sources"])
+            found_in = (
+                ["test:smk", "test:smp"]
+                if kwargs["sources"] == {"sml", "smk", "smp"}
+                else ["test:directory"] if kwargs["sources"] == {"directory"} else []
+            )
+            return DetailLookupResponse(input={}, summary={"foundIn": found_in})
+
+        def _to_detail(self, participant, environments, source_results):
             return DetailLookupResponse(
-                input={},
-                summary={"foundIn": ["test:smk", "test:smp"]},
+                input={"normalized": {"value": participant.value}},
+                summary={
+                    "foundIn": ["test:smk", "test:smp", "test:directory"]
+                },
+                environments=environments,
+                sourceResults=source_results,
             )
 
     evaluator = CodeListEvaluator("data/codelists")
@@ -532,9 +723,103 @@ def test_explicit_scheme_skips_broad_directory_discovery_but_keeps_exact_lookup(
         )
     )
 
-    assert len(result.candidates) == 1
-    assert len(result.matches) == 1
+    assert len(result.candidates) == 2
+    assert len(result.matches) == 2
+    assert calls.count({"sml", "smk", "smp"}) == 2
+    assert calls.count({"directory"}) == 2
+    assert calls.count({"lookup"}) == 0
     assert result.directoryMatches == []
+
+
+def test_failed_company_candidate_preserves_source_results() -> None:
+    class FakeOrchestrator:
+        settings = Settings(peppol_directory_enabled=True)
+
+        async def lookup(self, **kwargs):
+            source = (
+                "prod:directory"
+                if kwargs["sources"] == {"directory"}
+                else "prod:sml"
+            )
+            source_result = SourceResult(
+                source=source, status=SourceStatus.not_found, durationMs=5
+            )
+            return DetailLookupResponse(
+                input={}, summary={"foundIn": []}, sourceResults=[source_result]
+            )
+
+        def _to_detail(self, participant, environments, source_results):
+            return DetailLookupResponse(
+                input={"normalized": {"value": participant.value}},
+                summary={"foundIn": []},
+                environments=environments,
+                sourceResults=source_results,
+            )
+
+    service = CompanyLookupService(
+        FakeOrchestrator(), CodeListEvaluator("data/codelists")
+    )
+    result = asyncio.run(
+        service.lookup(
+            "BE",
+            "0123456749",
+            "0208",
+            LookupMode.detail,
+            [EnvironmentName.prod],
+            20,
+            True,
+        )
+    )
+
+    assert result.matches == []
+    assert [source.source for source in result.candidates[0].sourceResults] == [
+        "prod:sml",
+        "prod:directory",
+    ]
+
+
+def test_company_returns_504_when_all_candidate_sources_timeout() -> None:
+    class FakeOrchestrator:
+        settings = Settings(peppol_directory_enabled=True)
+
+        async def lookup(self, **kwargs):
+            source = (
+                "prod:directory"
+                if kwargs["sources"] == {"directory"}
+                else "prod:sml"
+            )
+            source_result = SourceResult(
+                source=source, status=SourceStatus.timeout, durationMs=100
+            )
+            return DetailLookupResponse(
+                input={}, summary={"foundIn": []}, sourceResults=[source_result]
+            )
+
+        def _to_detail(self, participant, environments, source_results):
+            return DetailLookupResponse(
+                input={"normalized": {"value": participant.value}},
+                summary={"foundIn": []},
+                environments=environments,
+                sourceResults=source_results,
+            )
+
+    service = CompanyLookupService(
+        FakeOrchestrator(), CodeListEvaluator("data/codelists")
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(
+            service.lookup(
+                "BE",
+                "0123456749",
+                "0208",
+                LookupMode.detail,
+                [EnvironmentName.prod],
+                20,
+                True,
+            )
+        )
+
+    assert exc_info.value.status_code == 504
 
 
 def test_explicit_scheme_bypasses_country_filter_with_warning() -> None:
@@ -547,12 +832,51 @@ def test_explicit_scheme_bypasses_country_filter_with_warning() -> None:
         "MY", "OPTBCNTRLP1007", None, 10
     )
 
-    assert explicit[0][1] == "9922:OPTBCNTRLP1007"
-    assert explicit[0][2].valid is True
+    assert [value for _, value, _ in explicit] == [
+        "9922:MYOPTBCNTRLP1007",
+        "9922:OPTBCNTRLP1007",
+    ]
+    assert all(validation.valid for _, _, validation in explicit)
     assert all(scheme.code != "9922" for scheme, _, _ in automatic)
     assert _scheme_country_warnings(explicit[0][0].countries, "MY") == [
         "Scheme country AD does not match requested country MY"
     ]
+
+
+def test_participant_values_are_deduplicated_case_insensitively() -> None:
+    values = _unique_participant_values(
+        ["9925:BE1040088537", "9925:1040088537"],
+        ["9925:be1040088537"],
+    )
+
+    assert list(values.values()) == ["9925:BE1040088537", "9925:1040088537"]
+
+
+def test_99xx_candidates_include_country_prefixed_and_unprefixed_variants() -> None:
+    evaluator = CodeListEvaluator("data/codelists")
+
+    values = [
+        value
+        for scheme, value, validation in evaluator.participant_candidate_evaluations(
+            "BE", "0678912345", "9925", 20
+        )
+        if scheme.code == "9925" and validation.valid
+    ]
+
+    assert values == ["9925:BE0678912345", "9925:0678912345"]
+
+
+def test_99xx_input_country_prefix_is_not_duplicated() -> None:
+    evaluator = CodeListEvaluator("data/codelists")
+
+    values = [
+        value
+        for _, value, _ in evaluator.participant_candidate_evaluations(
+            "BE", "BE0678912345", "9925", 20
+        )
+    ]
+
+    assert values == ["9925:BE0678912345", "9925:0678912345"]
 
 
 def test_participant_scheme_check_digit_validation() -> None:
@@ -566,10 +890,52 @@ def test_participant_scheme_check_digit_validation() -> None:
     )
 
     scheme = evaluator.participant_schemes["0208"]
-    rejected = validate_candidate(scheme, "0123456700")
+    warning = validate_candidate(scheme, "0123456700")
 
-    assert rejected.valid is False
-    assert rejected.reason == "check digit validation failed"
+    assert warning.valid is True
+    assert warning.status == "candidate_warning"
+    assert warning.reason == "check digit validation failed"
+
+
+def test_check_digit_warning_candidate_is_still_looked_up() -> None:
+    calls = []
+
+    class FakeOrchestrator:
+        settings = Settings(peppol_directory_enabled=True)
+
+        async def lookup(self, **kwargs):
+            calls.append(kwargs["sources"])
+            found_in = ["test:smk", "test:smp"] if "smp" in kwargs["sources"] else []
+            return DetailLookupResponse(input={}, summary={"foundIn": found_in})
+
+        def _to_detail(self, participant, environments, source_results):
+            return DetailLookupResponse(
+                input={"normalized": {"value": participant.value}},
+                summary={"foundIn": ["test:smk", "test:smp"]},
+                environments=environments,
+                sourceResults=source_results,
+            )
+
+    service = CompanyLookupService(
+        FakeOrchestrator(), CodeListEvaluator("data/codelists")
+    )
+    result = asyncio.run(
+        service.lookup(
+            "BE",
+            "0678912345",
+            "0208",
+            LookupMode.detail,
+            [EnvironmentName.test],
+            20,
+            True,
+        )
+    )
+
+    assert result.candidates[0].validationStatus == "candidate_warning"
+    assert result.candidates[0].warnings == ["check digit validation failed"]
+    assert result.candidates[0].found is True
+    assert calls == [{"sml", "smk", "smp"}, {"directory"}]
+
 
 
 def test_codelist_removed_dates_are_tagged_removed() -> None:
@@ -599,13 +965,13 @@ def test_company_lookup_detail_returns_rejected_candidates() -> None:
     client = TestClient(app)
 
     response = client.get(
-        "/api/v1/companies?country=BE&identifier=0123456700&identifier_type=0208&mode=detail"
+        "/api/v1/companies?country=BE&identifier=not-a-number&identifier_type=0208&mode=detail"
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["candidates"][0]["validationStatus"] == "candidate_rejected"
-    assert body["candidates"][0]["rejectionReason"] == "check digit validation failed"
+    assert body["candidates"][0]["rejectionReason"] == "identifier does not match regex"
     assert body["matches"] == []
 
 
@@ -666,7 +1032,9 @@ def test_smp_url_is_resolved_from_prod_sml_and_test_smk(monkeypatch) -> None:
     smp_base_urls = []
 
     class FakeSmlDnsClient:
-        def __init__(self, dns_zone: str, timeout_ms: int, source: str) -> None:
+        def __init__(
+            self, dns_zone: str, timeout_ms: int, source: str, client=None
+        ) -> None:
             self.dns_zone = dns_zone
             self.source = source
 

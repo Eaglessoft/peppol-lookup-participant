@@ -1,5 +1,7 @@
 import asyncio
 
+from fastapi import HTTPException
+
 from app.peppol.codelists.evaluator import CodeListEvaluator
 from app.peppol.models import (
     CandidateResult,
@@ -10,6 +12,7 @@ from app.peppol.models import (
     LightLookupResponse,
     LookupMode,
     ParticipantIdentifier,
+    SourceStatus,
 )
 from app.peppol.orchestrator import LookupOrchestrator
 from app.peppol.sources.base import measured_source
@@ -45,14 +48,20 @@ class CompanyLookupService:
                 country, identifier, environments, refresh
             )
         )
-        lookup_values = {
-            participant_value
-            for _, participant_value, validation in candidates
-            if validation.valid
-        }
-        lookup_values.update(_directory_participant_values(directory_matches, explicit_scheme_code))
+        directory_participant_values = _directory_participant_values(
+            directory_matches, explicit_scheme_code
+        )
+        lookup_values = _unique_participant_values(
+            (
+                participant_value
+                for _, participant_value, validation in candidates
+                if validation.valid
+            ),
+            directory_participant_values,
+        )
         candidate_by_value = {
-            participant_value: scheme for scheme, participant_value, _ in candidates
+            participant_value: (scheme, validation)
+            for scheme, participant_value, validation in candidates
         }
 
         for scheme, participant_value, validation in candidates:
@@ -85,18 +94,35 @@ class CompanyLookupService:
             participant_value: str,
         ) -> tuple[CandidateResult, LightLookupResponse | DetailLookupResponse | None]:
             participant = ParticipantIdentifier(value=participant_value)
-            scheme = candidate_by_value.get(participant_value)
+            candidate_metadata = candidate_by_value.get(participant_value)
+            scheme = candidate_metadata[0] if candidate_metadata else None
+            validation = candidate_metadata[1] if candidate_metadata else None
 
-            detail = await self.orchestrator.lookup(
-                participant=participant,
-                mode=LookupMode.detail,
-                environments=[environment.value for environment in environments],
-                sources={"directory", "sml", "smk", "smp"},
-                include_raw=False,
-                timeout_ms=None,
-                refresh=refresh,
+            environment_values = [environment.value for environment in environments]
+            detail, directory_detail = await asyncio.gather(
+                self.orchestrator.lookup(
+                    participant=participant,
+                    mode=LookupMode.detail,
+                    environments=environment_values,
+                    sources={"sml", "smk", "smp"},
+                    include_raw=False,
+                    timeout_ms=None,
+                    refresh=refresh,
+                ),
+                self.orchestrator.lookup(
+                    participant=participant,
+                    mode=LookupMode.detail,
+                    environments=environment_values,
+                    sources={"directory"},
+                    include_raw=False,
+                    timeout_ms=None,
+                    refresh=refresh,
+                ),
             )
-            found_in = detail.summary.get("foundIn", []) if hasattr(detail, "summary") else []
+            detail = _merge_detail_responses(
+                self.orchestrator, participant, detail, directory_detail
+            )
+            found_in = detail.summary.get("foundIn", [])
             confidence_score = _confidence_score(found_in)
             candidate_result = CandidateResult(
                 participantIdentifier=participant,
@@ -106,11 +132,17 @@ class CompanyLookupService:
                 schemeStatus=scheme.status
                 if scheme
                 else self.codelists.evaluate_participant_scheme(participant.icd),
-                validationStatus="candidate_valid" if scheme else "directory_candidate",
+                validationStatus=validation.status if validation else "directory_candidate",
                 found=bool(found_in),
                 foundIn=found_in,
                 confidenceScore=confidence_score,
-                warnings=_scheme_country_warnings(scheme.countries, country) if scheme else [],
+                warnings=(
+                    _scheme_country_warnings(scheme.countries, country)
+                    + ([validation.reason] if validation and validation.reason else [])
+                    if scheme
+                    else []
+                ),
+                sourceResults=detail.sourceResults,
             )
             if not found_in:
                 return candidate_result, None
@@ -119,12 +151,23 @@ class CompanyLookupService:
             return candidate_result, self.orchestrator._to_light(participant, detail.environments)
 
         lookup_results = await asyncio.gather(
-            *(lookup_participant_value(value) for value in sorted(lookup_values))
+            *(lookup_participant_value(value) for value in sorted(lookup_values.values()))
         )
         for candidate_result, match in lookup_results:
             candidate_results.append(candidate_result)
             if match:
                 matches.append(match)
+
+        active_source_results = [
+            source
+            for candidate in candidate_results
+            for source in candidate.sourceResults
+            if source.status != SourceStatus.disabled
+        ]
+        if active_source_results and all(
+            source.status == SourceStatus.timeout for source in active_source_results
+        ):
+            raise HTTPException(status_code=504, detail="all company lookup sources timed out")
 
         candidate_results.sort(key=lambda candidate: candidate.confidenceScore, reverse=True)
         matches.sort(key=_match_confidence_score, reverse=True)
@@ -149,11 +192,9 @@ class CompanyLookupService:
         if not self.orchestrator.settings.peppol_directory_enabled:
             return []
 
-        matches: list[DirectoryResult] = []
-        seen_payloads: set[str] = set()
         timeout_ms = self.orchestrator.settings.peppol_source_timeout_ms
 
-        for environment in environments:
+        async def search_environment(environment: EnvironmentName) -> DirectoryResult | None:
             base_url = (
                 self.orchestrator.settings.peppol_directory_prod_url
                 if environment == EnvironmentName.prod
@@ -163,13 +204,24 @@ class CompanyLookupService:
             source_name = f"{environment}:directory-search"
             result, source_result = await self.orchestrator._cached_source(
                 f"{source_name}:{query}:{base_url}",
-                lambda base_url=base_url, query=query, source_name=source_name: measured_source(
+                lambda: measured_source(
                     source_name,
-                    lambda: DirectoryClient(base_url, timeout_ms).search(query),
+                    lambda: self.orchestrator._with_source_limit(
+                        "directory",
+                        lambda: DirectoryClient(
+                            base_url, timeout_ms, self.orchestrator.http_client
+                        ).search(query),
+                    ),
                 ),
                 refresh,
             )
-            if not result or source_result.status != "success":
+            return result if result and source_result.status == "success" else None
+
+        results = await asyncio.gather(*(search_environment(env) for env in environments))
+        matches: list[DirectoryResult] = []
+        seen_payloads: set[str] = set()
+        for result in results:
+            if not result:
                 continue
             payload_key = str(result.businessCard)
             if payload_key in seen_payloads:
@@ -177,6 +229,38 @@ class CompanyLookupService:
             seen_payloads.add(payload_key)
             matches.append(result)
         return matches
+
+
+def _merge_detail_responses(
+    orchestrator: LookupOrchestrator,
+    participant: ParticipantIdentifier,
+    primary: DetailLookupResponse,
+    enrichment: DetailLookupResponse,
+) -> DetailLookupResponse:
+    enrichment_by_environment = {
+        environment.name: environment for environment in enrichment.environments
+    }
+    for environment in primary.environments:
+        enriched = enrichment_by_environment.get(environment.name)
+        if not enriched:
+            continue
+        if enriched.directory:
+            environment.directory = enriched.directory
+        if enriched.lookupService:
+            environment.lookupService = enriched.lookupService
+    return orchestrator._to_detail(
+        participant,
+        primary.environments,
+        [*primary.sourceResults, *enrichment.sourceResults],
+    )
+
+
+def _unique_participant_values(*groups: object) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for group in groups:
+        for value in group:
+            values.setdefault(value.casefold(), value)
+    return values
 
 
 def _scheme_country_warnings(scheme_countries: tuple[str, ...], country: str) -> list[str]:

@@ -54,12 +54,20 @@ class SourceTtlCache:
 
     def stats(self) -> dict[str, int]:
         now = monotonic()
-        expired = sum(1 for entry in self._items.values() if entry.expires_at <= now)
+        active_entries = [entry for entry in self._items.values() if entry.expires_at > now]
+        positive = sum(
+            entry.source_result.status == SourceStatus.success for entry in active_entries
+        )
+        negative = sum(
+            entry.source_result.status == SourceStatus.not_found for entry in active_entries
+        )
         return {
             "ttlSeconds": self.ttl_seconds,
             "maxEntries": self.max_entries,
             "entries": len(self._items),
-            "expiredEntries": expired,
+            "positiveEntries": positive,
+            "negativeEntries": negative,
+            "expiredEntries": len(self._items) - len(active_entries),
         }
 
     def _prune_expired(self, now: float) -> None:

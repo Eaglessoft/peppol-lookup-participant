@@ -142,7 +142,7 @@ def validate_candidate(scheme: ParticipantScheme, identifier: str) -> CandidateV
     }
     validator = check_digit_validators.get(scheme.code)
     if validator and not validator(normalized):
-        return CandidateValidation(False, "candidate_rejected", "check digit validation failed")
+        return CandidateValidation(True, "candidate_warning", "check digit validation failed")
     return CandidateValidation(True, "candidate_valid")
 
 

@@ -143,7 +143,7 @@ GET /api/v1/sources
 GET /api/v1/sources/health
 ```
 
-Returns configured source adapters, enabled environments, base URLs, cache status, and last health check.
+Returns configured source adapters, enabled environments, base URLs, cache status, and last health check. `check=true` performs or reuses a health check cached for one minute; `refresh=true` forces a live check.
 
 ### Company Discovery
 
@@ -211,7 +211,8 @@ Candidate result example:
       "schemeStatus": "valid",
       "validationStatus": "candidate_valid",
       "found": true,
-      "foundIn": ["prod:sml", "prod:smp", "prod:directory"]
+      "foundIn": ["prod:sml", "prod:smp", "prod:directory"],
+      "sourceResults": []
     }
   ],
   "matches": []
@@ -580,14 +581,17 @@ For each requested environment:
 11. Merge source results into summary, preserving source-specific details.
 12. Produce `light` or `detail` response.
 
-Directory and SML/SMP results must be treated separately. Directory absence does not mean the participant is not routable.
+Directory and SML/SMP results must be treated separately. Directory absence does not mean the participant is not routable. A successful Directory search with no exact participant match is `not_found`; an endpoint-level failure, including a Directory API route returning HTTP 404, is reported as a source error/unavailable and must not suppress results from SML/SMK or SMP.
 
 ## Caching and Rate Limits
 
 - Directory REST API can have strict rate limits, so local caller rate limits and
   source-result caching are applied. Stricter per-adapter throttling can be added
   if production traffic requires it.
-- Cache positive and negative source results separately.
+- Cache positive and negative source results separately and report both counts.
+- Cache source health results for 1 minute and expose the last check timestamp.
+- Apply global per-adapter concurrency limits so concurrent callers cannot overload Directory,
+  SML/SMK, SMP, or Lookup Service endpoints.
 - Suggested defaults:
   - Directory search: 15 minutes.
   - SML/SMK DNS result: 15 minutes.
@@ -630,6 +634,7 @@ Environment variables:
 | `PEPPOL_SML_PROD_DNS_ZONE` | `participant.sml.prod.tech.peppol.org` | Production SML DNS zone. |
 | `PEPPOL_SML_TEST_DNS_ZONE` | `participant.sml.test.tech.peppol.org` | Test SMKv2 DNS zone. |
 | `PEPPOL_SOURCE_TIMEOUT_MS` | `8000` | Per-source timeout. |
+| `PEPPOL_REQUEST_TIMEOUT_MS` | `30000` | Total API lookup request timeout. |
 | `PEPPOL_CACHE_TTL_SECONDS` | `900` | Default cache TTL. |
 | `PEPPOL_INCLUDE_RAW_MAX_BYTES` | `65536` | Max raw payload bytes in detail mode. |
 | `PEPPOL_CODELIST_SOURCE_URL` | `https://docs.peppol.eu/edelivery/codelists/` | Official codelist index URL. |

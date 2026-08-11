@@ -218,6 +218,7 @@ class CandidateResult(BaseModel):
     foundIn: list[str] = Field(default_factory=list)
     confidenceScore: int = 0
     warnings: list[str] = Field(default_factory=list)
+    sourceResults: list[SourceResult] = Field(default_factory=list)
 
 
 class CompanyLookupResponse(BaseModel):

@@ -35,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             task = app.state.codelist_refresh_task
             if task:
                 task.cancel()
+            await app.state.lookup_orchestrator.aclose()
 
     app = FastAPI(
         title=settings.app_name,

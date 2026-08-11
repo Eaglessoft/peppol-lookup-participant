@@ -107,13 +107,13 @@ class CodeListEvaluator:
         matches: list[tuple[ParticipantScheme, str]] = []
 
         for scheme in self._participant_candidate_schemes(country, identifier_type):
-            if candidate_is_valid(scheme, normalized_identifier):
-                candidate_identifier = normalize_identifier_for_scheme(
-                    scheme.code, normalized_identifier
-                )
-                matches.append((scheme, f"{scheme.code}:{candidate_identifier}"))
-            if len(matches) >= max_candidates:
-                break
+            for candidate_identifier in _participant_identifier_variants(
+                scheme, country, normalized_identifier
+            ):
+                if candidate_is_valid(scheme, candidate_identifier):
+                    matches.append((scheme, f"{scheme.code}:{candidate_identifier}"))
+                if len(matches) >= max_candidates:
+                    return matches
         return matches
 
     def participant_candidate_evaluations(
@@ -125,13 +125,13 @@ class CodeListEvaluator:
         matches: list[tuple[ParticipantScheme, str, CandidateValidation]] = []
 
         for scheme in self._participant_candidate_schemes(country, identifier_type):
-            candidate_identifier = normalize_identifier_for_scheme(
-                scheme.code, normalized_identifier
-            )
-            validation = validate_candidate(scheme, candidate_identifier)
-            matches.append((scheme, f"{scheme.code}:{candidate_identifier}", validation))
-            if len(matches) >= max_candidates:
-                break
+            for candidate_identifier in _participant_identifier_variants(
+                scheme, country, normalized_identifier
+            ):
+                validation = validate_candidate(scheme, candidate_identifier)
+                matches.append((scheme, f"{scheme.code}:{candidate_identifier}", validation))
+                if len(matches) >= max_candidates:
+                    return matches
         return matches
 
     def _participant_candidate_schemes(
@@ -193,6 +193,22 @@ class CodeListEvaluator:
 
 def _participant_scheme_status_priority(scheme: ParticipantScheme) -> int:
     return 0 if scheme.status == CodeListStatus.valid else 1
+
+
+def _participant_identifier_variants(
+    scheme: ParticipantScheme, country: str, identifier: str
+) -> list[str]:
+    normalized = normalize_identifier_for_scheme(scheme.code, identifier)
+    if not scheme.code.startswith("99"):
+        return [normalized]
+
+    country_prefix = country.strip().upper()
+    unprefixed = normalized
+    if country_prefix and unprefixed.upper().startswith(country_prefix):
+        unprefixed = unprefixed[len(country_prefix) :]
+
+    variants = [f"{country_prefix}{unprefixed}", unprefixed] if country_prefix else [unprefixed]
+    return list(dict.fromkeys(variants))
 
 
 def _document_type_lookup_candidates(value: str) -> list[str]:

@@ -1,6 +1,8 @@
+import asyncio
+from collections.abc import Awaitable
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.peppol.company_lookup import CompanyLookupService
 from app.peppol.models import (
@@ -22,6 +24,15 @@ from app.peppol.runtime import enforce_rate_limit, get_orchestrator_from_request
 from app.shared.config import Settings, get_settings
 
 router = APIRouter(tags=["Peppol lookup"])
+
+async def _with_request_timeout[ResponseT](
+    awaitable: Awaitable[ResponseT], settings: Settings
+) -> ResponseT:
+    try:
+        async with asyncio.timeout(settings.peppol_request_timeout_ms / 1000):
+            return await awaitable
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="lookup request timed out") from exc
 
 
 def get_orchestrator(request: Request) -> LookupOrchestrator:
@@ -50,14 +61,20 @@ async def lookup_participant(
     _: Annotated[None, Depends(require_lookup_rate_limit)] = None,
 ) -> LightLookupResponse | DetailLookupResponse:
     participant = normalize_participant_id(participant_id)
-    return await orchestrator.lookup(
-        participant=participant,
-        mode=mode,
-        environments=normalize_environment_list(environments, settings.peppol_lookup_environments),
-        sources=normalize_source_list(sources),
-        include_raw=include_raw,
-        timeout_ms=timeout_ms,
-        refresh=refresh,
+    return await _with_request_timeout(
+        orchestrator.lookup(
+            participant=participant,
+            mode=mode,
+            environments=normalize_environment_list(
+                environments, settings.peppol_lookup_environments
+            ),
+            sources=normalize_source_list(sources),
+            include_raw=include_raw,
+            timeout_ms=timeout_ms,
+            refresh=refresh,
+            raise_on_all_timeout=True,
+        ),
+        settings,
     )
 
 
@@ -74,14 +91,18 @@ async def post_lookup(
     participant = normalize_participant_id(
         f"{request.participant_id.scheme}::{request.participant_id.value}"
     )
-    return await orchestrator.lookup(
-        participant=participant,
-        mode=request.mode,
-        environments=[environment.value for environment in request.environments],
-        sources=normalize_source_list("all"),
-        include_raw=request.include_raw,
-        timeout_ms=request.timeout_ms,
-        refresh=request.refresh,
+    return await _with_request_timeout(
+        orchestrator.lookup(
+            participant=participant,
+            mode=request.mode,
+            environments=[environment.value for environment in request.environments],
+            sources=normalize_source_list("all"),
+            include_raw=request.include_raw,
+            timeout_ms=request.timeout_ms,
+            refresh=request.refresh,
+            raise_on_all_timeout=True,
+        ),
+        orchestrator.settings,
     )
 
 
@@ -106,8 +127,11 @@ async def lookup_company(
         environments, orchestrator.settings.peppol_lookup_environments
     )
     envs = [EnvironmentName(value) for value in environment_values]
-    return await service.lookup(
-        country, identifier, identifier_type, mode, envs, max_candidates, refresh
+    return await _with_request_timeout(
+        service.lookup(
+            country, identifier, identifier_type, mode, envs, max_candidates, refresh
+        ),
+        orchestrator.settings,
     )
 
 
@@ -122,14 +146,17 @@ async def post_lookup_company(
     _: Annotated[None, Depends(require_lookup_rate_limit)] = None,
 ) -> CompanyLookupResponse:
     service = CompanyLookupService(orchestrator, orchestrator.codelists)
-    return await service.lookup(
-        request.country,
-        request.identifier,
-        request.identifier_type,
-        request.mode,
-        request.environments,
-        request.max_candidates,
-        request.refresh,
+    return await _with_request_timeout(
+        service.lookup(
+            request.country,
+            request.identifier,
+            request.identifier_type,
+            request.mode,
+            request.environments,
+            request.max_candidates,
+            request.refresh,
+        ),
+        orchestrator.settings,
     )
 
 
@@ -155,11 +182,12 @@ async def source_health(
     orchestrator: Annotated[LookupOrchestrator, Depends(get_orchestrator)],
     request: Request,
     check: bool = False,
+    refresh: bool = False,
 ) -> dict[str, object]:
     if check:
-        health = await orchestrator.check_source_health()
+        health = await orchestrator.check_source_health(force=refresh)
     else:
-        health = {"status": "configured", **orchestrator.sources()}
+        health = orchestrator.health_snapshot()
     limiter = getattr(request.app.state, "rate_limiter", None)
     return {
         **health,

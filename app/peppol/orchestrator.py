@@ -1,10 +1,12 @@
 import asyncio
 from collections.abc import Awaitable, Callable, Iterable
+from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 from urllib.parse import quote
 
 import httpx
+from fastapi import HTTPException
 
 from app.peppol.codelists.cache import CodeListCache
 from app.peppol.codelists.client import CodeListClient
@@ -36,6 +38,22 @@ class LookupOrchestrator:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.codelists = CodeListEvaluator(settings.peppol_codelist_cache_dir)
+        self.http_client = httpx.AsyncClient(
+            timeout=None,
+            trust_env=False,
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
+        self.source_semaphores = {
+            "directory": asyncio.Semaphore(8),
+            "sml": asyncio.Semaphore(16),
+            "smp": asyncio.Semaphore(4),
+            "lookup": asyncio.Semaphore(4),
+        }
+        self._last_health_check: dict[str, Any] | None = None
+        self._last_health_check_at = 0.0
+
+    async def aclose(self) -> None:
+        await self.http_client.aclose()
 
     async def lookup(
         self,
@@ -46,6 +64,7 @@ class LookupOrchestrator:
         include_raw: bool,
         timeout_ms: int | None,
         refresh: bool = False,
+        raise_on_all_timeout: bool = False,
     ) -> LightLookupResponse | DetailLookupResponse:
         effective_timeout = timeout_ms or self.settings.peppol_source_timeout_ms
         lookup_results = await asyncio.gather(
@@ -63,6 +82,16 @@ class LookupOrchestrator:
         )
         environment_results = [result[0] for result in lookup_results]
         source_results = [source for result in lookup_results for source in result[1]]
+
+        active_source_results = [
+            result for result in source_results if result.status != SourceStatus.disabled
+        ]
+        if (
+            raise_on_all_timeout
+            and active_source_results
+            and all(result.status == SourceStatus.timeout for result in active_source_results)
+        ):
+            raise HTTPException(status_code=504, detail="all requested sources timed out")
 
         if mode == LookupMode.light:
             return self._to_light(participant, environment_results)
@@ -97,7 +126,12 @@ class LookupOrchestrator:
                 f"{source_name}:{participant.compact}:{directory_url}",
                 lambda: measured_source(
                     source_name,
-                    lambda: DirectoryClient(directory_url, timeout_ms).lookup(participant),
+                    lambda: self._with_source_limit(
+                        "directory",
+                        lambda: DirectoryClient(
+                            directory_url, timeout_ms, self.http_client
+                        ).lookup(participant),
+                    ),
                 ),
                 refresh,
             )
@@ -118,7 +152,12 @@ class LookupOrchestrator:
                 f"{source_name}:{participant.compact}:{dns_zone}",
                 lambda: measured_source(
                     source_name,
-                    lambda: SmlDnsClient(dns_zone, timeout_ms, sml_source).resolve(participant),
+                    lambda: self._with_source_limit(
+                        "sml",
+                        lambda: SmlDnsClient(
+                            dns_zone, timeout_ms, sml_source, self.http_client
+                        ).resolve(participant),
+                    ),
                 ),
                 refresh,
             )
@@ -132,10 +171,15 @@ class LookupOrchestrator:
                 f"{source_name}:{participant.compact}:{sml.smpBaseUrl}:raw={include_raw}",
                 lambda: measured_source(
                     source_name,
-                    lambda: SmpClient(sml.smpBaseUrl or "", timeout_ms, self.codelists).lookup(
-                        participant,
-                        include_raw,
-                        self.settings.peppol_include_raw_max_bytes,
+                    lambda: self._with_source_limit(
+                        "smp",
+                        lambda: SmpClient(
+                            sml.smpBaseUrl or "", timeout_ms, self.codelists
+                        ).lookup(
+                            participant,
+                            include_raw,
+                            self.settings.peppol_include_raw_max_bytes,
+                        ),
                     ),
                 ),
                 refresh,
@@ -154,9 +198,12 @@ class LookupOrchestrator:
                 f"{source_name}:{participant.compact}:{self.settings.peppol_lookup_service_url}",
                 lambda: measured_source(
                     source_name,
-                    lambda: OpenPeppolLookupClient(
-                        self.settings.peppol_lookup_service_url, timeout_ms
-                    ).lookup(participant),
+                    lambda: self._with_source_limit(
+                        "lookup",
+                        lambda: OpenPeppolLookupClient(
+                            self.settings.peppol_lookup_service_url, timeout_ms
+                        ).lookup(participant),
+                    ),
                 ),
                 refresh,
             )
@@ -292,6 +339,7 @@ class LookupOrchestrator:
                     "prod": self.settings.peppol_lookup_service_url,
                 },
             },
+            "lastHealthCheck": self._last_health_check,
             "cache": {
                 "ttlSeconds": self.settings.peppol_cache_ttl_seconds,
                 "sourceResults": source_cache.stats() if source_cache else None,
@@ -325,7 +373,14 @@ class LookupOrchestrator:
         ]
         return max(fetched_times) if fetched_times else None
 
-    async def check_source_health(self) -> dict[str, Any]:
+    async def check_source_health(self, force: bool = False) -> dict[str, Any]:
+        if (
+            not force
+            and self._last_health_check
+            and perf_counter() - self._last_health_check_at < 60
+        ):
+            return {**self._last_health_check, "cached": True}
+
         checks = [
             (
                 "prod:directory",
@@ -403,7 +458,27 @@ class LookupOrchestrator:
                             "error": str(exc),
                         }
                     )
-        return {"status": "checked", "results": results, **self.sources()}
+        checked_at = datetime.now(UTC).isoformat()
+        health = {
+            "status": "checked",
+            "checkedAt": checked_at,
+            "cached": False,
+            "results": results,
+        }
+        self._last_health_check = health
+        self._last_health_check_at = perf_counter()
+        return {**health, **self.sources()}
+
+    def health_snapshot(self) -> dict[str, Any]:
+        if self._last_health_check:
+            return {**self._last_health_check, "cached": True, **self.sources()}
+        return {"status": "configured", **self.sources()}
+
+    async def _with_source_limit[T](
+        self, source: str, action: Callable[[], Awaitable[T]]
+    ) -> T:
+        async with self.source_semaphores[source]:
+            return await action()
 
     async def refresh_codelists(self) -> dict[str, Any]:
         cache = CodeListCache(self.settings.peppol_codelist_cache_dir)

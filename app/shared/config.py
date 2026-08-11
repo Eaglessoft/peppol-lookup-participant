@@ -40,6 +40,9 @@ class Settings(BaseSettings):
         validation_alias="PEPPOL_SML_TEST_DNS_ZONE",
     )
     peppol_source_timeout_ms: int = Field(default=8000, validation_alias="PEPPOL_SOURCE_TIMEOUT_MS")
+    peppol_request_timeout_ms: int = Field(
+        default=30000, validation_alias="PEPPOL_REQUEST_TIMEOUT_MS"
+    )
     peppol_cache_ttl_seconds: int = Field(default=900, validation_alias="PEPPOL_CACHE_TTL_SECONDS")
     peppol_source_cache_max_entries: int = Field(
         default=500, validation_alias="PEPPOL_SOURCE_CACHE_MAX_ENTRIES"
@@ -70,7 +73,7 @@ class Settings(BaseSettings):
         default=60, validation_alias="PEPPOL_RATE_LIMIT_WINDOW_SECONDS"
     )
     peppol_company_lookup_concurrency: int = Field(
-        default=4, validation_alias="PEPPOL_COMPANY_LOOKUP_CONCURRENCY"
+        default=8, validation_alias="PEPPOL_COMPANY_LOOKUP_CONCURRENCY"
     )
     peppol_directory_enabled: bool = Field(
         default=True, validation_alias="PEPPOL_DIRECTORY_ENABLED"

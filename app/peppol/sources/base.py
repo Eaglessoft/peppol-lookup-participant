@@ -14,6 +14,12 @@ RATE_LIMIT_RETRY_MAX_DELAY_SECONDS = 2.0
 TRANSIENT_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
 
 
+class SourceUnavailableError(Exception):
+    def __init__(self, message: str, http_status: int | None = None) -> None:
+        super().__init__(message)
+        self.http_status = http_status
+
+
 async def measured_source[T](
     source_name: str, action: Callable[[], Awaitable[T]]
 ) -> tuple[T | None, SourceResult]:
@@ -46,6 +52,14 @@ async def measured_source[T](
             durationMs=int((perf_counter() - started) * 1000),
             rateLimited=exc.response.status_code == 429,
             error=f"HTTP {exc.response.status_code}",
+        )
+    except SourceUnavailableError as exc:
+        return None, SourceResult(
+            source=source_name,
+            status=SourceStatus.error,
+            httpStatus=exc.http_status,
+            durationMs=int((perf_counter() - started) * 1000),
+            error=str(exc),
         )
     except ValueError as exc:
         return None, SourceResult(

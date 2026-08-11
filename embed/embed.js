@@ -550,9 +550,14 @@
         bind() {
             this.querySelector('[data-form]').addEventListener('submit', (event) => {
                 event.preventDefault();
-                this.lookupCompany();
+                this.lookupCompany(false);
             });
             this.querySelector('[data-result]').addEventListener('click', (event) => {
+                const refresh = event.target.closest('[data-refresh-results]');
+                if (refresh) {
+                    this.lookupCompany(true);
+                    return;
+                }
                 const button = event.target.closest('[data-detail-participant]');
                 if (button) return;
                 const toggle = event.target.closest('[data-toggle-panel]');
@@ -585,9 +590,9 @@
             }
         }
 
-        async lookupCompany() {
+        async lookupCompany(refresh = false) {
             const form = new FormData(this.querySelector('[data-form]'));
-            this.startLookupProgress();
+            this.startLookupProgress(refresh);
 
             const params = new URLSearchParams({
                 country: form.get('country') || '',
@@ -595,6 +600,7 @@
                 identifier_type: form.get('identifierType') || '',
                 mode: 'detail'
             });
+            if (refresh) params.set('refresh', 'true');
 
             try {
                 const response = await fetch(`${this.apiUrl}/api/v1/companies?${params}`);
@@ -608,7 +614,7 @@
             }
         }
 
-        startLookupProgress() {
+        startLookupProgress(refresh = false) {
             const steps = [
                 'Generating participant candidates',
                 'Searching production and test directory',
@@ -616,14 +622,27 @@
                 'Fetching SMP document types',
                 'Finalizing results'
             ];
-            let activeIndex = 0;
+            const stepThresholds = [0, 18, 38, 62, 82];
+            const startedAt = performance.now();
             const render = () => {
+                const elapsed = performance.now() - startedAt;
+                const progress = Math.min(92, Math.round(92 * (1 - Math.exp(-elapsed / 3600))));
+                const activeIndex = stepThresholds.reduce(
+                    (current, threshold, index) => progress >= threshold ? index : current,
+                    0
+                );
                 this.setResult(`
                     <article class="pl-card pl-loading">
-                        <header>
-                            <strong>Looking up participant</strong>
-                            <span>${escapeHtml(steps[activeIndex])}</span>
-                        </header>
+                        <div class="pl-loading-overview" aria-label="Lookup in progress">
+                            <div class="pl-progress-ring" aria-hidden="true" style="--progress: ${progress * 3.6}deg">
+                                <strong>${progress}%</strong>
+                            </div>
+                            <div>
+                                <strong>${refresh ? 'Refreshing live Peppol data' : 'Looking up participant'}</strong>
+                                <span>${escapeHtml(steps[activeIndex])}</span>
+                                <small>Live Peppol sources may take a few seconds to respond.</small>
+                            </div>
+                        </div>
                         <div class="pl-loading-steps">
                             ${steps.map((step, index) => `
                                 <div class="pl-loading-step" data-progress="${
@@ -640,9 +659,8 @@
             this.stopLookupProgress();
             render();
             this.loadingTimer = window.setInterval(() => {
-                activeIndex = Math.min(activeIndex + 1, steps.length - 1);
                 render();
-            }, 1200);
+            }, 120);
         }
 
         stopLookupProgress() {
@@ -658,8 +676,17 @@
             const prodCount = this.environmentEntries(matches, directoryMatches, 'prod').length;
             const testCount = this.environmentEntries(matches, directoryMatches, 'test').length;
             this.setResult(`
-                <div class="pl-found-badge">
-                    Found ${prodCount + testCount || matches.length || 0} environment result(s)
+                <div class="pl-results-toolbar">
+                    <div class="pl-found-badge">
+                        Found ${prodCount + testCount || matches.length || 0} environment result(s)
+                    </div>
+                    <button type="button" class="pl-result-refresh" data-refresh-results
+                        aria-label="Refresh results from live Peppol sources">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M20 6v5h-5M4 18v-5h5M6.1 9a7 7 0 0 1 11.5-2.4L20 9M4 15l2.4 2.4A7 7 0 0 0 17.9 15"/>
+                        </svg>
+                        <span>Refresh results</span>
+                    </button>
                 </div>
                 <div class="pl-summary">
                     <span><strong>${matches.length}</strong> matches</span>
@@ -704,15 +731,15 @@
             const byParticipant = new Map();
             for (const entry of networkEntries) {
                 const normalized = entry.match.input && entry.match.input.normalized || {};
-                byParticipant.set(normalized.value || '', entry);
+                byParticipant.set(String(normalized.value || '').toLowerCase(), entry);
             }
             for (const entry of this.directorySearchEntries(directoryMatches, name)) {
-                const existing = byParticipant.get(entry.participant);
+                const existing = byParticipant.get(String(entry.participant || '').toLowerCase());
                 if (existing) {
                     existing.directorySearch = entry;
                     existing.sourceHits = mergeSourceHits(existing.sourceHits, entry.sourceHits);
                 } else {
-                    byParticipant.set(entry.participant, entry);
+                    byParticipant.set(String(entry.participant || '').toLowerCase(), entry);
                 }
             }
             return Array.from(byParticipant.values()).filter((entry) => entry.participant !== '');

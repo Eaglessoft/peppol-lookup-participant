@@ -35,20 +35,35 @@ def extract_smp_base_url(answers: list[dict[str, object]]) -> tuple[str | None, 
 
 
 class SmlDnsClient:
-    def __init__(self, dns_zone: str, timeout_ms: int, source: str) -> None:
+    def __init__(
+        self,
+        dns_zone: str,
+        timeout_ms: int,
+        source: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         self.dns_zone = dns_zone
         self.timeout = timeout_from_ms(timeout_ms)
         self.source = source
+        self.client = client
 
     async def resolve(self, participant: ParticipantIdentifier) -> SmlResult:
         query_name = build_sml_query_name(participant, self.dns_zone)
         url = f"https://dns.google/resolve?name={quote(query_name)}&type=NAPTR"
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+        client = self.client or httpx.AsyncClient(timeout=self.timeout, trust_env=False)
+        try:
             response = await request_with_rate_limit_retry(
-                client, "GET", url, headers={"Accept": "application/dns-json"}
+                client,
+                "GET",
+                url,
+                headers={"Accept": "application/dns-json"},
+                timeout=self.timeout,
             )
             response.raise_for_status()
             payload = response.json()
+        finally:
+            if self.client is None:
+                await client.aclose()
         answers = payload.get("Answer") or []
         smp_base_url, records = extract_smp_base_url(answers)
         if not smp_base_url:
