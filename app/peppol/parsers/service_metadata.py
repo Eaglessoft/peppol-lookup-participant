@@ -22,6 +22,9 @@ def parse_service_metadata(
     raw_max_bytes: int,
 ) -> ServiceMetadata:
     root = parse_xml(xml_text)
+    document_scheme, normalized_document_value = _split_document_type_identifier(
+        document_type_value
+    )
     processes: list[ProcessMetadata] = []
 
     for process in root.iter():
@@ -77,8 +80,12 @@ def parse_service_metadata(
 
     return ServiceMetadata(
         documentTypeIdentifier=IdentifierWithStatus(
-            scheme="busdox-docid-qns",
-            value=document_type_value,
+            scheme=document_scheme,
+            value=(
+                document_type_value
+                if document_type_value.startswith(f"{document_scheme}::")
+                else f"{document_scheme}::{normalized_document_value}"
+            ),
             status=document_status,
             displayName=document_name,
         ),
@@ -86,6 +93,14 @@ def parse_service_metadata(
         rawXmlIncluded=include_raw,
         rawXml=xml_text[:raw_max_bytes] if include_raw else None,
     )
+
+
+def _split_document_type_identifier(value: str) -> tuple[str, str]:
+    for scheme in ("busdox-docid-qns", "peppol-doctype-wildcard"):
+        prefix = f"{scheme}::"
+        if value.startswith(prefix):
+            return scheme, value[len(prefix) :]
+    return "busdox-docid-qns", value
 
 
 def _extensions(element) -> list[dict[str, object]]:

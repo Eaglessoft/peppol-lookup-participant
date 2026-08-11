@@ -173,6 +173,11 @@ class SmpResult(BaseModel):
     baseUrl: str
     serviceGroup: dict[str, Any] | None = None
     services: list[ServiceMetadata] = Field(default_factory=list)
+    metadataStatus: str = "complete"
+    metadataTotal: int = 0
+    metadataSuccessful: int = 0
+    metadataFailed: int = 0
+    metadataFailures: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class EnvironmentResult(BaseModel):
@@ -212,6 +217,7 @@ class CandidateResult(BaseModel):
     found: bool = False
     foundIn: list[str] = Field(default_factory=list)
     confidenceScore: int = 0
+    warnings: list[str] = Field(default_factory=list)
 
 
 class CompanyLookupResponse(BaseModel):

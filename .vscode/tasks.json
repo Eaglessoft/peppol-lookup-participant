@@ -16,6 +16,11 @@
         "8080"
       ],
       "isBackground": true,
+      "options": {
+        "env": {
+          "PYTHONPYCACHEPREFIX": "${workspaceFolder}/.cache/python"
+        }
+      },
       "problemMatcher": []
     },
     {
@@ -26,6 +31,11 @@
         "-m",
         "pytest"
       ],
+      "options": {
+        "env": {
+          "PYTHONPYCACHEPREFIX": "${workspaceFolder}/.cache/python"
+        }
+      },
       "problemMatcher": []
     },
     {
@@ -38,6 +48,11 @@
         "check",
         "."
       ],
+      "options": {
+        "env": {
+          "PYTHONPYCACHEPREFIX": "${workspaceFolder}/.cache/python"
+        }
+      },
       "problemMatcher": []
     }
   ]

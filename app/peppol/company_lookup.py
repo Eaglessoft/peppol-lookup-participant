@@ -68,6 +68,7 @@ class CompanyLookupService:
                     schemeStatus=scheme.status,
                     validationStatus=validation.status,
                     rejectionReason=validation.reason,
+                    warnings=_scheme_country_warnings(scheme.countries, country),
                 )
             )
 
@@ -109,6 +110,7 @@ class CompanyLookupService:
                 found=bool(found_in),
                 foundIn=found_in,
                 confidenceScore=confidence_score,
+                warnings=_scheme_country_warnings(scheme.countries, country) if scheme else [],
             )
             if not found_in:
                 return candidate_result, None
@@ -175,6 +177,14 @@ class CompanyLookupService:
             seen_payloads.add(payload_key)
             matches.append(result)
         return matches
+
+
+def _scheme_country_warnings(scheme_countries: tuple[str, ...], country: str) -> list[str]:
+    if not scheme_countries or country in scheme_countries:
+        return []
+    return [
+        f"Scheme country {', '.join(scheme_countries)} does not match requested country {country}"
+    ]
 
 
 def _confidence_score(found_in: list[str]) -> int:
