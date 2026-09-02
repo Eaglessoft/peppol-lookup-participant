@@ -4,8 +4,17 @@ Use the widget with one script and one HTML tag.
 The API service must be running and reachable from the browser.
 
 ```html
+<script src="https://cdn.jsdelivr.net/gh/Eaglessoft/peppol-lookup-participant@master/embed/embed.js"></script>
 <peppol-lookup api-url="https://your-api.example.com"></peppol-lookup>
-<script src="https://your-cdn.example.com/embed.js"></script>
+```
+
+`embed.js` automatically loads `embed.css` from the same path by default.
+
+The repository's default branch is `master`, so the jsDelivr path uses `@master`.
+Pin a release tag instead of the branch when you need the widget to stay fixed:
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/Eaglessoft/peppol-lookup-participant@0.0.9/embed/embed.js"></script>
 ```
 
 ## API URL Resolution

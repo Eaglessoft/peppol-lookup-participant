@@ -3,20 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Peppol Lookup</title>
-    <link rel="icon" type="image/png" href="./embed/eaglessoft-favicon.png">
-    <link rel="stylesheet" href="./embed.css?v=50">
+    <title>Embedded Peppol Participant Lookup</title>
+    <!-- Stands in for a third-party host page: no Docnaut chrome and no shared
+         theme, which is exactly the situation the widget has to survive. It
+         falls back to its own light defaults. -->
     <style>
-        html,
-        body {
-            min-height: 100%;
-            margin: 0;
-            background: #ffffff;
-        }
+        body { margin: 0; padding: 32px 20px; background: #ffffff;
+               font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .host { max-width: 1200px; margin: 0 auto; }
+        h1 { font-size: 1.4rem; margin: 0 0 4px; }
+        p.note { color: #64748b; margin: 0 0 24px; font-size: .9rem; }
     </style>
 </head>
 <body>
-    <peppol-lookup auto-css="false" layout="full"></peppol-lookup>
-    <script src="./embed.js?v=50"></script>
+    <div class="host">
+        <h1>Example host page</h1>
+        <p class="note">The widget below is the embed build. It draws no header or footer of its own.</p>
+
+        <peppol-lookup layout="full"></peppol-lookup>
+
+        <!-- Custom endpoint example -->
+        <!-- <peppol-lookup api-url="http://localhost:8080"></peppol-lookup> -->
+
+        <!-- Optional: disable auto CSS and include it manually -->
+        <!-- <link rel="stylesheet" href="./embed.css?v=2"> -->
+        <!-- <peppol-lookup auto-css="false"></peppol-lookup> -->
+    </div>
+
+    <script src="./embed.js?v=2"></script>
 </body>
 </html>

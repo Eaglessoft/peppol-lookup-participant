@@ -11,6 +11,15 @@ from app.peppol.sources.base import request_with_rate_limit_retry, timeout_from_
 
 SMP_METADATA_CONCURRENCY = 4
 
+# An SMP serves `text/xml`, which is what the OASIS BDXR SMP spec describes and
+# what the implementations actually send. Asking for `application/xml` alone is
+# narrower than that and some SMPs answer 406 rather than serving it anyway -
+# ELMA (smp.elma-smp.no), which fronts every Norwegian participant, is one, so
+# every Norwegian lookup failed its SMP step while the SML step succeeded. The
+# q-values keep the preference and the wildcard means no SMP can refuse us on
+# content negotiation again.
+SMP_ACCEPT = {"Accept": "text/xml, application/xml;q=0.9, */*;q=0.1"}
+
 
 class SmpClient:
     def __init__(self, base_url: str, timeout_ms: int, codelists: CodeListEvaluator) -> None:
@@ -26,7 +35,7 @@ class SmpClient:
 
         async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
             group_response = await request_with_rate_limit_retry(
-                client, "GET", service_group_url, headers={"Accept": "application/xml"}
+                client, "GET", service_group_url, headers=SMP_ACCEPT
             )
             group_response.raise_for_status()
             service_group, document_refs = parse_service_group(group_response.text)
@@ -45,7 +54,7 @@ class SmpClient:
                 try:
                     async with semaphore:
                         response = await request_with_rate_limit_retry(
-                            client, "GET", service_url, headers={"Accept": "application/xml"}
+                            client, "GET", service_url, headers=SMP_ACCEPT
                         )
                     response.raise_for_status()
                     service = parse_service_metadata(

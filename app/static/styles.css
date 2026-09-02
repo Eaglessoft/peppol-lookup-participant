@@ -1,0 +1,297 @@
+/* Peppol Participant Lookup - the standalone page.
+
+   Load order is tools-theme.css, then embed/embed.css, then this file. The
+   widget's sheet ships light defaults for its own --pl-* tokens so that it
+   stays self-contained inside a third-party host, which never loads the shared
+   theme. This file runs last and is the only place the dark side exists: an
+   embed has no business flipping with a stored preference it cannot see, but
+   the page it lives on here does.
+
+   Same three-state shape as the palette in tools-theme.css, and the same
+   absolute rule: nothing may be defined only inside the media query, or the
+   forced-light case breaks. */
+
+.peppol-lookup-widget {
+    /* The widget's own sheet already takes the shared palette as input for its
+       text and line colours - `--pl-fg: var(--fg, ...)` and friends - so those
+       need nothing here. Only the surfaces are page-specific. */
+    --pl-surface: var(--card);
+    --pl-recess: var(--bg);
+    --pl-soft: var(--tint);
+}
+
+/* The widget root paints a page background in full layout, which made sense
+   while it owned the viewport. Here the page owns the background, and leaving
+   it on put a card-coloured slab behind everything below the form. */
+.peppol-lookup-widget[layout="full"],
+.peppol-lookup-widget.pl-full {
+    min-height: 0;
+    background: transparent;
+}
+
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .peppol-lookup-widget {
+    --pl-chip-strong: #3d4b70;
+    --pl-primary-hover: #6b93de;
+    --pl-track: #24314f;
+
+    /* Dark semantic surfaces are hand set rather than washed out of the light
+       ones: mixing a pale tint into a navy card averages toward neutral and the
+       chips lose the hue that distinguishes them. Chroma is held near the
+       card's own. */
+    --pl-ok: var(--ws-ok);     --pl-ok-bg: var(--ws-ok-bg);     --pl-ok-line: #2b6f5f;
+    --pl-info: #9bc0ff; --pl-info-bg: #1b2f52; --pl-info-line: #365285;
+    --pl-warn: var(--ws-warn); --pl-warn-bg: var(--ws-warn-bg); --pl-warn-line: #7a6127;
+    --pl-dep: #ffab7d;  --pl-dep-bg: #452a18;  --pl-dep-line: #7d5334;
+    --pl-bad: #ff9fb0;  --pl-bad-bg: #46202c;  --pl-bad-line: #7d3e4f;
+    --pl-err: var(--ws-err);   --pl-err-bg: var(--ws-err-bg);   --pl-err-line: #82414a;
+} }
+
+:root[data-theme="dark"] .peppol-lookup-widget {
+    --pl-chip-strong: #3d4b70;
+    --pl-primary-hover: #6b93de;
+    --pl-track: #24314f;
+
+    --pl-ok: var(--ws-ok);     --pl-ok-bg: var(--ws-ok-bg);     --pl-ok-line: #2b6f5f;
+    --pl-info: #9bc0ff; --pl-info-bg: #1b2f52; --pl-info-line: #365285;
+    --pl-warn: var(--ws-warn); --pl-warn-bg: var(--ws-warn-bg); --pl-warn-line: #7a6127;
+    --pl-dep: #ffab7d;  --pl-dep-bg: #452a18;  --pl-dep-line: #7d5334;
+    --pl-bad: #ff9fb0;  --pl-bad-bg: #46202c;  --pl-bad-line: #7d3e4f;
+    --pl-err: var(--ws-err);   --pl-err-bg: var(--ws-err-bg);   --pl-err-line: #82414a;
+}
+
+/* ---------------- page layout ----------------
+   The shell is in tools-theme.css and shared with the other two tools: the
+   search band fills the first screen and results below it make the document
+   taller, so the page scrolls and a long result list gets the whole window.
+
+   A lookup result is a wide thing - endpoint URLs, certificate subjects,
+   document type identifiers - and the shared 1440px carries it. There is no
+   --work-w override: this page ran at 1400 against a 1240 chrome, which left the
+   search band sticking out 41px to the left of the lockup above it. */
+.tool-main {
+    padding-bottom: 8px;
+}
+
+.tool-main > .peppol-lookup-widget {
+    width: 100%;
+}
+
+/* Before the first search there is nothing below the form, so the whole block -
+   search band and placeholder - sits in the upper third rather than glued to the
+   hero. The placeholder stays directly under the band; centring it in the empty
+   region alone left it stranded a few hundred pixels away from the thing it
+   describes.
+
+   Not centred vertically either: a native <select> opens whichever way has more
+   room, and the country list is long enough that neither direction fits. Keeping
+   the block high leaves the room below, which is the direction people expect.
+
+   The flex chain has to be carried all the way down - widget, shell, main - or a
+   link defaults to min-height:auto and the region takes its content's height. */
+.tool-main > .peppol-lookup-widget {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.tool-main .pl-shell {
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.tool-main .pl-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-rows: auto 1fr;
+}
+
+.tool-main .pl-result {
+    min-height: 0;
+}
+
+@supports selector(:has(*)) {
+    .tool-main:has(.pl-result > .pl-empty) {
+        padding-top: clamp(16px, 9vh, 104px);
+    }
+
+    /* Rows sized to content, so the placeholder follows the band instead of
+       being pushed to the bottom of a stretched row. */
+    .tool-main .pl-main:has(.pl-result > .pl-empty) {
+        grid-template-rows: auto auto;
+        align-content: start;
+    }
+}
+
+
+/* Undoing the widget's full-page framing.
+   
+   layout="full" was written for a widget that owned the viewport: the shell
+   asks for min-height:100vh and .pl-main builds its own 1200px container with
+   24/48px of padding. Inside this page both are wrong - the 100vh is what left
+   the form floating in a tall empty band, and the container nests inside .wrap
+   so every gutter counts twice.
+   
+   These selectors carry the [layout="full"] attribute on purpose: the widget's
+   own rules do too, and without it the overrides lose on specificity rather
+   than on order. */
+.peppol-lookup-widget[layout="full"] .pl-shell,
+.peppol-lookup-widget.pl-full .pl-shell {
+    min-height: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+}
+
+.peppol-lookup-widget[layout="full"] .pl-main,
+.peppol-lookup-widget.pl-full .pl-main,
+.peppol-lookup-widget[layout="full"] .pl-form,
+.peppol-lookup-widget.pl-full .pl-form,
+.peppol-lookup-widget[layout="full"] .pl-result,
+.peppol-lookup-widget.pl-full .pl-result {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+    padding-inline: 0;
+}
+
+.peppol-lookup-widget[layout="full"] .pl-main,
+.peppol-lookup-widget.pl-full .pl-main {
+    padding-block: 0;
+}
+
+/* One left edge for the whole column.
+
+   The widget's sheet sizes several of these individually - .pl-form at 1120px,
+   .pl-result at 1180px, .pl-main at 1200px - and each was overridden above, but
+   overriding them one at a time means the next one added drifts again. This
+   states the rule instead of chasing instances: every direct child of the
+   content column starts and ends where the column does, which is the same edge
+   the header, hero and footer use. */
+.peppol-lookup-widget[layout="full"] .pl-main > *,
+.peppol-lookup-widget.pl-full .pl-main > * {
+    width: 100%;
+    max-width: none;
+    margin-inline: 0;
+}
+
+.peppol-lookup-widget[layout="full"] .pl-result,
+.peppol-lookup-widget.pl-full .pl-result {
+    padding-top: 14px;
+}
+
+/* The search band becomes a card like the other two tools carry, rather than a
+   tinted panel inside another surface. */
+.peppol-lookup-widget[layout="full"] .pl-search-band,
+.peppol-lookup-widget.pl-full .pl-search-band,
+.peppol-lookup-widget .pl-search-band {
+    padding: 18px;
+    background: var(--card);
+    border: 1px solid var(--line2);
+    border-radius: var(--radius);
+}
+
+/* ---------------- typography alignment ---------------- */
+.peppol-lookup-widget .pl-summary strong,
+.peppol-lookup-widget .pl-entity-title strong,
+.peppol-lookup-widget .pl-card > header strong,
+.peppol-lookup-widget .pl-directory-summary strong {
+    font-family: var(--font-display);
+    letter-spacing: -0.015em;
+}
+
+.peppol-lookup-widget .pl-doc-title code,
+.peppol-lookup-widget .pl-tech-list dd {
+    font-family: var(--font-mono);
+}
+
+/* ---------------- focus ----------------
+   The widget shipped with no focus styles at all - a 2.4.7 failure on a form
+   that is the entire point of the page. Portal standard: a 3px accent ring,
+   and hover kept separate so a mouse click never paints one. */
+.peppol-lookup-widget :is(input, select, button, a, summary):focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+}
+
+.peppol-lookup-widget summary {
+    cursor: pointer;
+}
+
+/* ---------------- controls ----------------
+   Squares off the pill radii onto the portal scale and gives the submit button
+   the same treatment as the other two tools: accent fill, darken on hover
+   rather than swapping to a second colour that has no dark-mode counterpart. */
+.peppol-lookup-widget .pl-form input,
+.peppol-lookup-widget .pl-form select,
+.peppol-lookup-widget .pl-form button {
+    border-radius: var(--radius-sm);
+    font-family: var(--font);
+}
+
+.peppol-lookup-widget .pl-form button[type="submit"] {
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+    transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.peppol-lookup-widget .pl-form button[type="submit"]:hover:not(:disabled) {
+    filter: brightness(0.92);
+    transform: translateY(-1px);
+}
+
+.peppol-lookup-widget .pl-search-band {
+    box-shadow: 0 10px 28px rgba(33, 43, 69, 0.10);
+}
+
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .peppol-lookup-widget .pl-search-band {
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+} }
+
+:root[data-theme="dark"] .peppol-lookup-widget .pl-search-band {
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.peppol-lookup-widget .pl-card,
+.peppol-lookup-widget .pl-summary > div,
+.peppol-lookup-widget .pl-env-participant,
+.peppol-lookup-widget .pl-tech-block,
+.peppol-lookup-widget .pl-dti-block {
+    border-radius: var(--radius);
+}
+
+.peppol-lookup-widget .pl-source-chip,
+.peppol-lookup-widget .pl-found-badge,
+.peppol-lookup-widget .pl-muted-action,
+.peppol-lookup-widget .pl-doc-badge,
+.peppol-lookup-widget [data-code-status],
+.peppol-lookup-widget .pl-secondary-button,
+.peppol-lookup-widget .pl-result-refresh {
+    border-radius: var(--radius-sm);
+}
+
+/* The results empty state.
+
+   It stands in for a region that will fill with cards, so it should read as a
+   placeholder rather than as a stray sentence: centred in the space it
+   represents, muted, and given enough height that the area is visibly waiting
+   for something. Left-aligned body text at full contrast - which is what it was
+   - looks like content that failed to load.
+
+   No border, and specifically no dashed one: a dashed outline is the standard
+   signal for a drop target, and there is nothing here to drop. Centring and the
+   muted tone carry "placeholder" on their own. */
+.peppol-lookup-widget[layout="full"] .pl-result > .pl-empty,
+.peppol-lookup-widget.pl-full .pl-result > .pl-empty {
+    display: grid;
+    place-items: center;
+    min-height: clamp(110px, 18vh, 180px);
+    padding: 24px;
+    border: 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+    text-align: center;
+}
