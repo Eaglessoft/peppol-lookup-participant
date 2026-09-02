@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Stays ahead of every <link>: the preload scanner starts fetching those
+       during parsing, and a <base> that lands after them can lose the race.
+       main.py does a global str.replace, so this token must appear exactly
+       once in the file. -->
+  <base href="__APP_BASE_HREF__">
+
+  <title>Peppol Participant Lookup | Docnaut Tools</title>
+  <meta name="description" content="Check whether a company is reachable on the Peppol network, which access point receives on its behalf, and which document types it accepts.">
+  <meta name="author" content="Docnaut">
+  <link rel="canonical" href="https://tools.docnaut.com/peppol-lookup/">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Docnaut">
+  <meta property="og:url" content="https://tools.docnaut.com/peppol-lookup/">
+  <meta property="og:title" content="Peppol Participant Lookup | Docnaut Tools">
+  <meta property="og:description" content="Check whether a company is reachable on the Peppol network, which access point receives on its behalf, and which document types it accepts.">
+  <meta property="og:image" content="https://tools.docnaut.com/sources/og-cover.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Docnaut">
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:title" content="Peppol Participant Lookup | Docnaut Tools">
+  <meta property="twitter:description" content="Check whether a company is reachable on the Peppol network and which document types it accepts.">
+  <meta property="twitter:image" content="https://tools.docnaut.com/sources/og-cover.png">
+  <meta property="twitter:image:alt" content="Docnaut">
+
+  <meta name="theme-color" content="#f1f5fd" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1526" media="(prefers-color-scheme: dark)">
+  <link rel="icon" type="image/png" sizes="32x32" href="static/sources/icon-32.png?v=3">
+  <link rel="icon" type="image/png" sizes="192x192" href="static/sources/icon-192.png?v=3">
+  <link rel="apple-touch-icon" href="static/sources/apple-touch-icon.png?v=3">
+
+  <script>/* applied before first paint so a stored choice never flashes the other theme */
+(function(){try{var t=localStorage.getItem("dn-theme");
+if(t!=="dark"&&t!=="light")return;
+document.documentElement.setAttribute("data-theme",t);
+/* the two metas above are keyed to the OS, which an explicit choice overrides.
+   Give BOTH the chosen colour so whichever one matches reports the right one. */
+var c=t==="dark"?"#0e1526":"#f1f5fd",m=document.querySelectorAll('meta[name="theme-color"]');
+for(var i=0;i<m.length;i++)m[i].setAttribute("content",c);}catch(e){}})();</script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Order matters: the shared theme first, then the widget's own sheet, then
+       styles.css last so it can bind the widget's tokens onto the palette. -->
+  <link rel="stylesheet" href="static/tools-theme.css?v=3494670425">
+  <link rel="stylesheet" href="embed/embed.css?v=3">
+  <link rel="stylesheet" href="static/styles.css?v=3">
+</head>
+<body class="tool-page">
+  <header class="site-hdr">
+    <div class="wrap">
+      <a class="brand" href="/">
+        <img class="logo-l" src="static/sources/docnaut_logo.webp" alt="Docnaut" width="1200" height="236">
+        <img class="logo-d" src="static/sources/docnaut_light_logo.webp" alt="Docnaut" width="1200" height="236">
+        <span class="tag">Tools</span>
+      </a>
+      <div class="hdr-right">
+        <nav aria-label="Docnaut"><ul class="hnav">
+          <li class="out-li"><a class="out" href="https://www.docnaut.com/" target="_blank" rel="noopener noreferrer">docnaut.com <svg class="ext" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a></li>
+        </ul></nav>
+        <button class="theme-toggle" type="button" aria-label="Switch to dark theme" aria-pressed="false">
+          <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.4A8.4 8.4 0 1 1 9.6 4a6.8 6.8 0 0 0 10.4 10.4z"/></svg><svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.1M12 19.3v2.1M2.6 12h2.1M19.3 12h2.1M5.3 5.3l1.5 1.5M17.2 17.2l1.5 1.5M18.7 5.3l-1.5 1.5M6.8 17.2l-1.5 1.5"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero hero-tool">
+    <div class="wrap">
+      <span class="kicker"><span class="bar"></span>SML &middot; SMP &middot; Directory</span>
+      <h1>Peppol <em>Participant Lookup</em></h1>
+    </div>
+  </section>
+
+  <main class="tool-main wrap-work">
+    <peppol-lookup layout="full" auto-css="false"></peppol-lookup>
+  </main>
+
+  <footer class="site-ftr">
+    <div class="wrap">
+      <p class="f-brand"><strong>Docnaut</strong> &middot; Powered by Eaglessoft &middot; &copy; 2026</p>
+      <nav class="f-links" aria-label="Footer">
+        <a href="https://www.docnaut.com/about-us-docnaut/" target="_blank" rel="noopener noreferrer">About</a>
+        <a href="https://www.docnaut.com/contact-us-docnaut/" target="_blank" rel="noopener noreferrer">Contact</a>
+        <a href="https://eaglessoft.com/privacy-policy/" target="_blank" rel="noopener noreferrer">Privacy</a>
+      </nav>
+      <p class="f-tech">Queries the Peppol SML, SMP and Directory &middot; Source: <a href="https://github.com/Eaglessoft/peppol-lookup-participant" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+    </div>
+  </footer>
+
+  <script>
+(function(){
+  var btn=document.querySelector(".theme-toggle"); if(!btn) return;
+  var mq=window.matchMedia("(prefers-color-scheme: dark)"), root=document.documentElement;
+  /* No stored choice means follow the OS, so read the attribute first and only
+     fall back to the media query - never stamp an attribute on load. */
+  function current(){return root.getAttribute("data-theme")||(mq.matches?"dark":"light");}
+  function sync(){
+    var dark=current()==="dark";
+    btn.setAttribute("aria-label",dark?"Switch to light theme":"Switch to dark theme");
+    btn.setAttribute("aria-pressed",String(dark));
+    var c=dark?"#0e1526":"#f1f5fd",m=document.querySelectorAll('meta[name="theme-color"]');
+    for(var i=0;i<m.length;i++)m[i].setAttribute("content",c);
+  }
+  btn.addEventListener("click",function(){
+    var next=current()==="dark"?"light":"dark";
+    root.setAttribute("data-theme",next);
+    try{localStorage.setItem("dn-theme",next);}catch(e){}
+    sync();
+  });
+  if(mq.addEventListener)mq.addEventListener("change",sync);
+  sync();
+})();
+  </script>
+  <script defer src="static/app.js?v=3"></script>
+</body>
+</html>

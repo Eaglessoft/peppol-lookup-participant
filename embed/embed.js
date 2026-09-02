@@ -600,6 +600,17 @@
                 identifier_type: form.get('identifierType') || '',
                 mode: 'detail'
             });
+
+            // Empty means "whatever the service is configured for", which is
+            // how this endpoint behaved before the field existed. Sending
+            // prod,test explicitly would take that decision away from the
+            // deployment.
+            const environments = form.get('environments');
+            if (environments) params.set('environments', environments);
+
+            // Empty means the service decides, and its default is both.
+            this.requestedEnvironments = environments ? environments.split(',') : ['prod', 'test'];
+
             if (refresh) params.set('refresh', 'true');
 
             try {
@@ -675,10 +686,14 @@
             const directoryMatches = payload.directoryMatches || [];
             const prodCount = this.environmentEntries(matches, directoryMatches, 'prod').length;
             const testCount = this.environmentEntries(matches, directoryMatches, 'test').length;
+            const environmentsShown = this.activeEnvironments();
+            const found = environmentsShown.reduce(
+                (total, name) => total + (name === 'prod' ? prodCount : testCount), 0
+            );
             this.setResult(`
                 <div class="pl-results-toolbar">
-                    <div class="pl-found-badge">
-                        Found ${prodCount + testCount || matches.length || 0} environment result(s)
+                    <div class="pl-found-badge" data-empty="${found === 0}">
+                        ${found === 0 ? 'No participants found' : `Found ${found} participant${found === 1 ? '' : 's'}`}
                     </div>
                     <button type="button" class="pl-result-refresh" data-refresh-results
                         aria-label="Refresh results from live Peppol sources">
@@ -690,8 +705,8 @@
                 </div>
                 <div class="pl-summary">
                     <span><strong>${matches.length}</strong> matches</span>
-                    <span><strong>${prodCount}</strong> production</span>
-                    <span><strong>${testCount}</strong> test</span>
+                    ${environmentsShown.includes('prod') ? `<span><strong>${prodCount}</strong> production</span>` : ''}
+                    ${environmentsShown.includes('test') ? `<span><strong>${testCount}</strong> test</span>` : ''}
                 </div>
                 ${this.environmentSections(matches, directoryMatches)}
                 ${this.notFoundCandidateList(candidates)}
@@ -701,9 +716,16 @@
         }
 
         environmentSections(matches, directoryMatches = []) {
-            return ['prod', 'test'].map((name) =>
+            return this.activeEnvironments().map((name) =>
                 this.environmentSection(matches, directoryMatches, name)
             ).join('');
+        }
+
+        // Falls back to both so a result rendered before any search - or by an
+        // embedder driving the widget directly - still shows everything.
+        activeEnvironments() {
+            const requested = this.requestedEnvironments;
+            return Array.isArray(requested) && requested.length ? requested : ['prod', 'test'];
         }
 
         environmentEntries(matches, directoryMatches, name) {
@@ -1047,15 +1069,6 @@
         render() {
             this.innerHTML = `
                 <section class="pl-shell">
-                    <header class="pl-topbar">
-                        <div class="pl-topbar-inner">
-                            <img class="pl-eaglessoft-logo" src="${this.apiUrl}/embed/eaglessoft-logo.png" alt="Eaglessoft">
-                        </div>
-                    </header>
-                    <section class="pl-page-title">
-                        <h1>Peppol Participant Lookup</h1>
-                        <p>Discover Peppol participants, routing information and supported document types</p>
-                    </section>
                     <main class="pl-main">
                         <section class="pl-search-band">
                             <form data-form class="pl-form">
@@ -1069,25 +1082,29 @@
                                     <label>
                                         <span>Identifier <b class="pl-required">*</b></span>
                                         <input name="identifier" required
-                                            placeholder="Company/VAT/GLN number, e.g. 0123456749">
+                                            placeholder="Company VAT/Tax ID, e.g. 0123456789">
                                     </label>
                                     <label>
                                         <span>Type / ICD</span>
                                         <input name="identifierType"
                                             placeholder="Peppol scheme code, e.g. 0208">
                                     </label>
+                                    <label>
+                                        <span>Peppol Network</span>
+                                        <select name="environments">
+                                            <option value="prod" selected>Production</option>
+                                            <option value="test">Test</option>
+                                            <option value="">Both</option>
+                                        </select>
+                                    </label>
                                 </div>
                                 <button type="submit">Search Peppol</button>
                             </form>
                         </section>
                         <section data-result class="pl-result">
-                            <div class="pl-empty">Search by country, identifier and ICD code</div>
+                            <div class="pl-empty">Results will appear here. Pick a country and enter an identifier to search.</div>
                         </section>
                     </main>
-                    <footer class="pl-footer">
-                        <strong>Eaglessoft</strong>
-                        <span>Powered by Peppol network discovery | Source: <a href="https://github.com/Eaglessoft/peppol-lookup-participant" target="_blank" rel="noopener">GitHub</a></span>
-                    </footer>
                 </section>
             `;
         }

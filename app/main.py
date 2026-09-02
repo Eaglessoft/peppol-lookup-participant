@@ -15,6 +15,42 @@ from app.shared.logging import configure_logging
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
+
+
+class _NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that always revalidates.
+
+    Asset URLs carry a hand-maintained ?v=, which is one forgotten bump away
+    from serving last release's stylesheet against this release's markup -
+    exactly the failure the HTML response had. StaticFiles sends no
+    Cache-Control at all, leaving browsers to guess a freshness lifetime, so
+    say it explicitly instead.
+    """
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
+BASE_PLACEHOLDER = "__APP_BASE_HREF__"
+
+
+def _base_href(context_path: str) -> str:
+    """Normalise a context path into a <base href> value.
+
+    Always leading and trailing slash, or plain "/" when the app is mounted at
+    the root. Mirrors IndexController in saxon-xslt-service and IndexServlet in
+    phive-doc-validator so the three tools resolve assets identically.
+    """
+    trimmed = (context_path or "").strip()
+    if not trimmed or trimmed == "/":
+        return "/"
+    if not trimmed.startswith("/"):
+        trimmed = "/" + trimmed
+    return trimmed.rstrip("/") + "/"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings)
@@ -63,11 +99,36 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get(f"{context_path}/" if context_path else "/", include_in_schema=False)
     def root_ui() -> HTMLResponse:
-        html = (ROOT_DIR / "embed" / "sample.html").read_text(encoding="utf-8")
-        html = html.replace("./embed.css", "./embed/embed.css")
-        html = html.replace("./embed.js", "./embed/embed.js")
-        return HTMLResponse(html)
+        """Serve the page shell with a base href for the running context path.
 
+        Every asset URL in the template is relative and has no leading slash, so
+        it resolves against that value - which is what lets one image run at the
+        root during local development and behind the /peppol-lookup prefix in
+        production without the markup changing. Links that address *other*
+        services on the same origin (the portal, a sibling tool) stay
+        path-absolute on purpose: <base> does not touch those, so they resolve
+        against the origin alone.
+
+        This replaces a pair of substring rewrites on embed/sample.html, which
+        only worked because the widget doubled as the page.
+        """
+        html = (ROOT_DIR / "app" / "ui" / "index.html").read_text(encoding="utf-8")
+        # The ?v= query strings keep the browser honest about CSS and JS, but
+        # nothing was protecting the document that references them: with no
+        # Cache-Control the browser caches this page heuristically, so after a
+        # deploy a returning visitor gets the new stylesheet against the old
+        # markup.
+        return HTMLResponse(
+            html.replace(BASE_PLACEHOLDER, _base_href(context_path)),
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
+
+    app.mount(
+        f"{context_path}/static" if context_path else "/static",
+        _NoCacheStaticFiles(directory=ROOT_DIR / "app" / "static"),
+        name="static",
+    )
+    # Kept mounted for jsDelivr and for anyone already embedding the widget.
     app.mount(
         f"{context_path}/embed" if context_path else "/embed",
         StaticFiles(directory=ROOT_DIR / "embed", html=True),
